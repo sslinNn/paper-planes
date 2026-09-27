@@ -3,11 +3,13 @@ import PlaneMap from './PlaneMap'
 
 export default function Home() {
   return (
-    <main>
-      <header>
-        <h1>✈ Paper Planes</h1>
-        <p>Every reply you post on X flies across this map.</p>
-        <LoginButton />
+    <main className="sheet">
+      <header className="masthead">
+        <h1 className="title" data-ink="Paper Planes">Paper Planes</h1>
+        <div className="lede">
+          <p>Every reply on X becomes a <strong>paper plane</strong>, flying from one country to another. Log in and yours take off.</p>
+          <LoginButton />
+        </div>
       </header>
       <PlaneMap />
     </main>

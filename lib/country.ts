@@ -42,5 +42,12 @@ export function parseCountry(location: string | null | undefined): string | null
 export const isCountry = (v: unknown): v is string =>
   typeof v === 'string' && /^[A-Z]{2}$/.test(v) && countries.isValid(v)
 
+
+// короткое человеческое имя: Russia, а не Russian Federation
+export function countryName(code: string): string {
+  const names = [countries.getName(code, 'en', { select: 'official' }), countries.getName(code, 'en', { select: 'alias' })]
+  return names.filter((n): n is string => !!n && !n.includes(',')).sort((a, b) => a.length - b.length)[0] ?? code
+}
+
 export const countryNames = () =>
-  Object.entries(countries.getNames('en')).sort((a, b) => a[1].localeCompare(b[1]))
+  Object.keys(countries.getNames('en')).map((c) => [c, countryName(c)] as const).sort((a, b) => a[1].localeCompare(b[1]))

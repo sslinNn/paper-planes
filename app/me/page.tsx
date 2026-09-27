@@ -14,30 +14,35 @@ export default function MePage() {
     fetch('/api/me').then(async (r) => setMe(r.ok ? await r.json() : null))
   }, [])
 
-  if (me === undefined) return <main>Loading…</main>
-  if (me === null) return <main><Link className="btn" href="/">Log in first</Link></main>
+  if (me === undefined) return <main className="sheet"><p className="status">Loading your ticket…</p></main>
+  if (me === null)
+    return (
+      <main className="sheet">
+        <h1 className="title me-title" data-ink="Not boarded">Not boarded</h1>
+        <p className="lede"><Link className="tag" href="/">Back to the map and log in</Link></p>
+      </main>
+    )
 
   const save = async (value: string) => {
     const country = value || null
     const r = await fetch('/api/me', { method: 'POST', body: JSON.stringify({ country }) })
     if (r.ok) setMe({ ...me, country })
-    setStatus(r.ok ? 'Saved ✈' : 'Could not save, try again')
+    setStatus(r.ok ? 'Saved. Your next planes take off from here.' : 'Couldn’t save that. Try again in a moment.')
   }
 
+  const handle = me.handle ? `@${me.handle}` : 'You’re in'
   return (
-    <main>
-      <h1>@{me.handle}</h1>
-      <p>
-        <label>
-          Your planes take off from{' '}
-          <select value={me.country ?? ''} onChange={(e) => save(e.target.value)}>
-            <option value="">🐧 Antarctica (unknown)</option>
-            {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-          </select>
-        </label>
-      </p>
-      <p role="status">{status}</p>
-      <p><Link href="/">← back to the map</Link></p>
+    <main className="sheet">
+      <h1 className="title me-title" data-ink={handle}>{handle}</h1>
+      <div className="form">
+        <label htmlFor="country">Your planes take off from</label>
+        <select id="country" value={me.country ?? ''} onChange={(e) => save(e.target.value)}>
+          <option value="">Antarctica (somewhere unknown)</option>
+          {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+        </select>
+        <p className="status" role="status">{status}</p>
+      </div>
+      <p className="lede"><Link className="tag" href="/">See your planes on the map →</Link></p>
     </main>
   )
 }

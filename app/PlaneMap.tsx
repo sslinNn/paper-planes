@@ -72,10 +72,9 @@ function FlightView({ p }: { p: Plane }) {
   return (
     <g>
       <path d={d} className="trail"><title>{label}</title></path>
-      <text className="plane" dy="0.35em" textAnchor="middle">
-        ✈
+      <path className="plane" d="M7 0 L-6 -5 L-3 0 L-6 5 Z">
         <animateMotion ref={motion} dur="3s" begin="indefinite" fill="freeze" rotate="auto" path={d} />
-      </text>
+      </path>
     </g>
   )
 }

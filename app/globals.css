@@ -12,7 +12,7 @@ a { color: var(--accent); }
 .land { fill: var(--land); stroke: var(--edge); stroke-width: .5; }
 .fog { fill: #fff; opacity: .15; }
 .trail { fill: none; stroke: var(--accent); stroke-width: 1.2; animation: trail 12s forwards; }
-.plane { fill: var(--fg); font-size: 16px; animation: land 3.6s forwards; pointer-events: none; }
+.plane { fill: var(--fg); animation: land 3.6s forwards; pointer-events: none; }
 .pulse { fill: var(--accent); animation: trail 4s forwards; }
 select { font: inherit; padding: 6px; }
 @keyframes trail { from { opacity: .9; } to { opacity: .08; } }

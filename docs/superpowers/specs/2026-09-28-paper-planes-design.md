@@ -31,7 +31,7 @@
 Таблицы Better Auth (`user`, `session`, `account`, `verification`) создаёт его CLI.
 В `user` добавляем поля (additionalFields, клиенту на запись недоступны):
 - `handle` — X username
-- `country` — ISO-3166 alpha-2, null = «туман»
+- `country` — ISO-3166 alpha-2, null = Антарктида
 - `countryManual` — юзер выбрал сам, сборщик больше не трогает
 - `sinceId` — последний обработанный твит
 
@@ -50,7 +50,7 @@ X id юзера — `account."accountId"` (для `providerId = 'twitter'`).
 
 **Логин.** Better Auth → X, скоупы `users.read tweet.read offline.access`
 (дефолтный `users.email` отключаем — он требует отдельной настройки в X).
-`handle` берём из профиля (`mapProfileToUser`).
+`handle` сборщик берёт сам из `/2/users/me` (Better Auth не сохраняет `input: false`-поля из профиля).
 
 **Сборщик — по визитам, без крона.** Каждый запрос карты (`GET /api/planes`) в фоне
 (`after()`) пробует взять замок:
@@ -61,7 +61,7 @@ X id юзера — `account."accountId"` (для `providerId = 'twitter'`).
 
 Сбор для каждого юзера:
 1. Токен: `auth.api.getAccessToken` (обновит сам). Ошибка → юзер пропускается, лог.
-2. Первый раз и страна не задана → `GET /2/users/me?user.fields=location` → парсим страну.
+2. Нет `handle` или первый раз без страны → `GET /2/users/me?user.fields=username,location` → хэндл и страна.
 3. `GET /2/users/:id/tweets` с `since_id`, `max_results` 20 в первый раз и 100 дальше.
 4. Берём реплаи другим людям (не себе, не без адресата).
 5. Страна получателя: из `user`, если залогинен; иначе из `recipients`; иначе парсим

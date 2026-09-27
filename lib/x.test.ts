@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getTweets, RateLimited, Unauthorized } from './x.ts'
+import { getMe, getTweets, RateLimited, Unauthorized } from './x.ts'
 
 const fake = (status: number, body: unknown, seen: string[] = []) =>
   ((url: string | URL | Request) => {
@@ -44,4 +44,11 @@ test('429 → RateLimited', async () => {
 
 test('401 → Unauthorized', async () => {
   await assert.rejects(() => getTweets('tok', '1', null, fake(401, {})), Unauthorized)
+})
+
+test('getMe asks for username and location', async () => {
+  const seen: string[] = []
+  const me = await getMe('tok', fake(200, { data: { id: '1', username: 'me', location: 'Berlin' } }, seen))
+  assert.equal(new URL(seen[0]).searchParams.get('user.fields'), 'username,location')
+  assert.equal(me.username, 'me')
 })

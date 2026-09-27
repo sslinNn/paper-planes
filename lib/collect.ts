@@ -16,9 +16,12 @@ async function collectUser(r: Row): Promise<number> {
   const { accessToken } = await auth.api.getAccessToken({ body: { accountId: r.account_id, userId: r.user_id } })
   const me: Me = { x_id: r.x_id, handle: r.handle, country: r.country }
 
-  if (!r.since_id && !r.country && !r.country_manual) {
-    me.country = parseCountry((await getMe(accessToken)).location)
-    await pool.query(`update "user" set country = $1 where id = $2`, [me.country, r.user_id])
+  // Better Auth не сохраняет поля с input: false из профиля — хэндл берём сами
+  if (!r.handle || (!r.since_id && !r.country && !r.country_manual)) {
+    const profile = await getMe(accessToken)
+    me.handle = profile.username
+    if (!r.country && !r.country_manual) me.country = parseCountry(profile.location)
+    await pool.query(`update "user" set handle = $1, country = $2 where id = $3`, [me.handle, me.country, r.user_id])
   }
 
   const { tweets, users, newestId } = await getTweets(accessToken, r.x_id, r.since_id)

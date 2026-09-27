@@ -28,6 +28,8 @@ export async function getTweets(token: string, userId: string, sinceId: string |
 }
 
 export async function getMe(token: string, f: typeof fetch = fetch) {
-  const j = await get<{ data: { location?: string } }>(`${API}/users/me?user.fields=location`, token, f)
+  const j = await get<{ data: { username: string; location?: string } }>(
+    `${API}/users/me?user.fields=username,location`, token, f,
+  )
   return j.data
 }

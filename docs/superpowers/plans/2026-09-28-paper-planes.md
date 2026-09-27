@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Живая карта мира, где каждый реплай в X между залогиненными юзерами летит бумажным самолётиком из страны в страну.
+**Goal:** Живая карта мира, где каждый реплай в X залогиненного юзера летит бумажным самолётиком из страны в страну.
 
-**Architecture:** Next.js (Vercel) — карта, логин через X, страница выбора страны. Supabase — Auth (провайдер `x`), Postgres, Realtime. Edge Function `collect` раз в 5 минут (pg_cron) читает новые твиты каждого юзера его же токеном, превращает реплаи в строки `planes`; карта получает их через Realtime и анимирует SVG `<animateMotion>`.
+**Architecture:** Один Next.js-проект на Vercel. Better Auth логинит через X и хранит/обновляет токены в Neon. Сборщик живёт в `lib/collect.ts` и запускается в фоне (`after()`) из `GET /api/planes` не чаще раза в 5 минут (замок — одна строка в БД). Карта опрашивает `/api/planes?after=<id>` раз в 20 секунд и анимирует самолётики SVG `<animateMotion>`.
 
-**Tech Stack:** Next.js (App Router, TS), `@supabase/supabase-js`, `@supabase/ssr`, `d3-geo`, `topojson-client`, `world-atlas`, `i18n-iso-countries`; Deno (Edge Functions + `deno test`); Node built-in test runner для фронтовой геометрии.
+**Tech Stack:** Next.js (App Router, TS), `better-auth`, `pg`, Neon Postgres, `d3-geo`, `topojson-client`, `world-atlas`, `i18n-iso-countries`; тесты — встроенный `node --test` (Node 26 сам снимает типы с `.ts`).
 
 **Spec:** `docs/superpowers/specs/2026-09-28-paper-planes-design.md`
 
@@ -14,21 +14,22 @@
 
 - На карте только страны (ISO-3166 alpha-2), никаких координат юзеров.
 - Текст твитов не хранится нигде.
-- Токены X недоступны клиенту: отдельная таблица `x_tokens` без RLS-политик (уточнение спеки — там токены были в `users`).
-- Клиент может менять в `users` только `country` и `country_manual`.
+- Браузер не ходит в БД; токены X живут только в таблице `account` Better Auth.
+- Клиент меняет только свою страну, и только через `POST /api/me` с проверкой ISO-кода.
 - Страна `null` = «туман», точка `FOG = [-140, 5]` (Тихий океан).
 - X API: `max_results` 20 на первом прогоне юзера, 100 дальше; пагинацию не делаем.
-- Бот ничего не постит в X.
-- Тексты интерфейса — на английском (карта глобальная).
-- Уточнение спеки: подпись самолётика — нативный `<title>` (hover/tap), а не отдельный клик-попап; чтобы карта не стояла, раз в 2.5 с перелетает случайный самолётик из истории.
+- Сборщик — не чаще раза в 5 минут (замок в таблице `collector`); бот ничего не постит в X.
+- Скоупы X: `users.read tweet.read offline.access` (дефолтный `users.email` Better Auth отключаем).
+- Тексты интерфейса — на английском.
+- Внутри `lib/` относительные импорты с расширением `.ts` (иначе `node --test` их не найдёт); в `app/` — через `@/lib/...` без расширения.
 
 ## Review Focus
 
-1. Повторный логин не должен сбрасывать вручную выбранную страну и `since_id` → проверка в Task 5, Step 7.
-2. Реплай самому себе (свой тред) не должен давать самолётик → тест в Task 2.
-3. Реплай удалённому/забаненному аккаунту (нет юзера в `includes`) → самолётик пропускается, сборщик не падает → тест в Task 2.
-4. Страна без геометрии на карте 110m (например `HK`, `SG`), неизвестный код, `null` → точка «туман», а не `NaN` → тест в Task 6.
-5. Отозванный доступ / мёртвый refresh token → юзер выпадает (токены удаляются), остальные собираются → тест `refresh` в Task 4 + ручная проверка.
+1. Реплай самому себе (свой тред) не должен давать самолётик → тест в Task 2.
+2. Реплай удалённому/забаненному аккаунту (нет юзера в `includes`) → самолётик пропускается, сборщик не падает → тест в Task 2.
+3. Страна без геометрии на карте 110m (`SG`, `HK`), неизвестный код, `null` → «туман», а не `NaN` → тест в Task 6.
+4. Мусор в `POST /api/me` (`"xx"`, `"RUS"`, `123`, `"<script>"`) → 400, в БД ничего не пишется → тест в Task 7.
+5. Два посетителя одновременно открыли карту → сборщик запускается один раз (замок) → проверка в Task 5, Step 6.
 
 ---
 
@@ -36,29 +37,26 @@
 
 ```
 app/
-  layout.tsx              (create-next-app, правим title)
-  globals.css             стили карты
-  page.tsx                главная: заголовок, LoginButton, PlaneMap
-  LoginButton.tsx         client: логин через X / ссылка на /me
-  PlaneMap.tsx            client: SVG-карта, Realtime, анимация
-  me/page.tsx             client: выбор страны
-  auth/callback/route.ts  обмен кода, сохранение юзера и токенов
+  layout.tsx                      (create-next-app, правим metadata)
+  globals.css                     стили
+  page.tsx                        главная: заголовок, LoginButton, PlaneMap
+  LoginButton.tsx                 client: логин / ссылка на /me
+  PlaneMap.tsx                    client: SVG-карта, опрос API, анимация
+  me/page.tsx                     client: выбор страны
+  api/auth/[...all]/route.ts      Better Auth
+  api/planes/route.ts             лента самолётиков + запуск сборщика
+  api/me/route.ts                 GET профиль / POST страна
 lib/
-  geo.ts                  проекция, страны, at(iso) → [lon, lat]
-  geo.test.ts             node --test
-  supabase/client.ts      браузерный клиент
-  supabase/server.ts      серверный (cookies) + admin (secret key)
-supabase/
-  config.toml             (supabase init) + verify_jwt=false для collect
-  migrations/20260928000000_init.sql
-  migrations/20260928000100_cron.sql
-  functions/_shared/country.ts      parseCountry
-  functions/_shared/country.test.ts
-  functions/_shared/planes.ts       toPlanes, resolveCountries
-  functions/_shared/planes.test.ts
-  functions/_shared/x.ts            refresh, getTweets, getMe
-  functions/_shared/x.test.ts
-  functions/collect/index.ts        сборщик
+  db.ts                           pg Pool
+  auth.ts                         Better Auth (сервер)
+  auth-client.ts                  Better Auth (браузер)
+  country.ts   + country.test.ts  parseCountry, isCountry
+  planes.ts    + planes.test.ts   replyTargets, resolveCountries, toPlanes
+  x.ts         + x.test.ts        getTweets, getMe
+  collect.ts                      сборщик (БД + X)
+  geo.ts       + geo.test.ts      проекция, at(iso)
+db/
+  schema.sql                      свои таблицы
 ```
 
 ---
@@ -66,35 +64,42 @@ supabase/
 ### Task 1: Скелет проекта + парсер страны
 
 **Files:**
-- Create: Next-скелет (create-next-app), `supabase/config.toml` (supabase init)
-- Create: `supabase/functions/_shared/country.ts`
-- Test: `supabase/functions/_shared/country.test.ts`
+- Create: Next-скелет (create-next-app)
+- Create: `lib/country.ts`
+- Test: `lib/country.test.ts`
 
 **Interfaces:**
-- Produces: `parseCountry(location: string | null | undefined): string | null` — alpha-2 в верхнем регистре или `null`.
+- Produces: `parseCountry(location: string | null | undefined): string | null` — alpha-2 в верхнем регистре или `null`; `isCountry(v: unknown): v is string` — валидный alpha-2.
 
-- [ ] **Step 1: Скелет Next + Supabase**
+- [ ] **Step 1: Скелет**
 
 В корне репо (там уже есть `.git` и `docs/` — create-next-app их допускает):
 
 ```bash
 npx create-next-app@latest . --ts --app --eslint --no-tailwind --no-src-dir --import-alias "@/*" --use-npm --yes
-npx supabase init
+npm i i18n-iso-countries
 ```
 
-В `tsconfig.json` в `"exclude"` добавить `"supabase"` и `"**/*.test.ts"` (Deno-код и тесты не должны попадать в `next build`):
+`tsconfig.json` → в `compilerOptions` добавить:
 
 ```json
-"exclude": ["node_modules", "supabase", "**/*.test.ts"]
+"allowImportingTsExtensions": true
 ```
 
-- [ ] **Step 2: Написать падающий тест**
+`package.json` → добавить `"type": "module"` на верхний уровень и скрипт:
 
-`supabase/functions/_shared/country.test.ts`:
+```json
+"test": "node --test lib/*.test.ts"
+```
+
+- [ ] **Step 2: Падающий тест**
+
+`lib/country.test.ts`:
 
 ```ts
-import { assertEquals } from 'jsr:@std/assert@1'
-import { parseCountry } from './country.ts'
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { isCountry, parseCountry } from './country.ts'
 
 const cases: [string | null, string | null][] = [
   ['Moscow', 'RU'],
@@ -112,25 +117,30 @@ const cases: [string | null, string | null][] = [
 ]
 
 for (const [input, expected] of cases) {
-  Deno.test(`parseCountry(${JSON.stringify(input)}) → ${expected}`, () => {
-    assertEquals(parseCountry(input), expected)
+  test(`parseCountry(${JSON.stringify(input)}) → ${expected}`, () => {
+    assert.equal(parseCountry(input), expected)
   })
 }
+
+test('isCountry accepts only real alpha-2 codes', () => {
+  assert.equal(isCountry('DE'), true)
+  for (const bad of ['XX', 'de', 'RUS', '', 123, null, '<script>']) assert.equal(isCountry(bad), false)
+})
 ```
 
 - [ ] **Step 3: Убедиться, что падает**
 
-Run: `deno test supabase/functions/_shared/country.test.ts`
-Expected: FAIL — `Module not found "…/country.ts"`
+Run: `npm test`
+Expected: FAIL — `Cannot find module '…/lib/country.ts'`
 
 - [ ] **Step 4: Реализация**
 
-`supabase/functions/_shared/country.ts`:
+`lib/country.ts`:
 
 ```ts
-import countries from 'npm:i18n-iso-countries@7'
-import en from 'npm:i18n-iso-countries@7/langs/en.json' with { type: 'json' }
-import ru from 'npm:i18n-iso-countries@7/langs/ru.json' with { type: 'json' }
+import countries from 'i18n-iso-countries'
+import en from 'i18n-iso-countries/langs/en.json' with { type: 'json' }
+import ru from 'i18n-iso-countries/langs/ru.json' with { type: 'json' }
 
 countries.registerLocale(en)
 countries.registerLocale(ru)
@@ -168,12 +178,18 @@ export function parseCountry(location: string | null | undefined): string | null
   }
   return null
 }
+
+export const isCountry = (v: unknown): v is string =>
+  typeof v === 'string' && /^[A-Z]{2}$/.test(v) && countries.isValid(v)
+
+export const countryNames = () =>
+  Object.entries(countries.getNames('en')).sort((a, b) => a[1].localeCompare(b[1]))
 ```
 
 - [ ] **Step 5: Тесты проходят**
 
-Run: `deno test supabase/functions/_shared/country.test.ts`
-Expected: PASS, 12 passed
+Run: `npm test`
+Expected: PASS, 13 tests
 
 - [ ] **Step 6: Commit**
 
@@ -187,8 +203,8 @@ git commit -m "feat: project skeleton and country parser"
 ### Task 2: Реплаи → самолётики
 
 **Files:**
-- Create: `supabase/functions/_shared/planes.ts`
-- Test: `supabase/functions/_shared/planes.test.ts`
+- Create: `lib/planes.ts`
+- Test: `lib/planes.test.ts`
 
 **Interfaces:**
 - Consumes: `parseCountry` (Task 1)
@@ -200,7 +216,7 @@ git commit -m "feat: project skeleton and country parser"
   type Plane = { tweet_id: string; from_x_id: string; to_x_id: string; from_handle: string; to_handle: string;
                  from_country: string | null; to_country: string | null; created_at: string }
   type Recipient = { x_id: string; handle: string; country: string | null }
-  replyTargets(me: Me, tweets: Tweet[]): string[]            // уникальные id адресатов
+  replyTargets(me: Me, tweets: Tweet[]): string[]
   resolveCountries(ids: string[], registered: Map<string, string | null>, cached: Map<string, string | null>, users: XUser[])
     : { countryOf: Map<string, string | null>; newRecipients: Recipient[] }
   toPlanes(me: Me, tweets: Tweet[], users: XUser[], countryOf: Map<string, string | null>): Plane[]
@@ -208,10 +224,11 @@ git commit -m "feat: project skeleton and country parser"
 
 - [ ] **Step 1: Падающий тест**
 
-`supabase/functions/_shared/planes.test.ts`:
+`lib/planes.test.ts`:
 
 ```ts
-import { assertEquals } from 'jsr:@std/assert@1'
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
 import { replyTargets, resolveCountries, toPlanes, type Tweet, type XUser } from './planes.ts'
 
 const me = { x_id: '1', handle: 'me', country: 'RU' }
@@ -221,52 +238,51 @@ const users: XUser[] = [
   { id: '3', username: 'ann', location: 'somewhere' },
 ]
 
-Deno.test('replyTargets: only replies to other people, unique', () => {
-  assertEquals(replyTargets(me, [t('a', '2'), t('b'), t('c', '1'), t('d', '2'), t('e', '3')]), ['2', '3'])
+test('replyTargets: only replies to other people, unique', () => {
+  assert.deepEqual(replyTargets(me, [t('a', '2'), t('b'), t('c', '1'), t('d', '2'), t('e', '3')]), ['2', '3'])
 })
 
-Deno.test('toPlanes: reply to other user becomes plane', () => {
-  const planes = toPlanes(me, [t('a', '2')], users, new Map([['2', 'DE']]))
-  assertEquals(planes, [{
+test('toPlanes: reply to other user becomes plane', () => {
+  assert.deepEqual(toPlanes(me, [t('a', '2')], users, new Map([['2', 'DE']])), [{
     tweet_id: 'a', from_x_id: '1', to_x_id: '2', from_handle: 'me', to_handle: 'bob',
     from_country: 'RU', to_country: 'DE', created_at: '2026-09-28T00:00:00Z',
   }])
 })
 
-Deno.test('toPlanes: self-reply and non-reply are skipped', () => {
-  assertEquals(toPlanes(me, [t('a', '1'), t('b')], users, new Map()), [])
+test('toPlanes: self-reply and non-reply are skipped', () => {
+  assert.deepEqual(toPlanes(me, [t('a', '1'), t('b')], users, new Map()), [])
 })
 
-Deno.test('toPlanes: recipient missing from includes (deleted account) is skipped', () => {
-  assertEquals(toPlanes(me, [t('a', '99')], users, new Map()), [])
+test('toPlanes: recipient missing from includes (deleted account) is skipped', () => {
+  assert.deepEqual(toPlanes(me, [t('a', '99')], users, new Map()), [])
 })
 
-Deno.test('resolveCountries: registered beats cached beats parsed', () => {
+test('resolveCountries: registered beats cached beats parsed', () => {
   const { countryOf, newRecipients } = resolveCountries(
     ['2', '3', '4'],
-    new Map([['2', 'FR']]),          // bob залогинен и выбрал Францию
-    new Map([['3', 'JP']]),          // ann уже в кэше
+    new Map([['2', 'FR']]), // bob залогинен и выбрал Францию
+    new Map([['3', 'JP']]), // ann уже в кэше
     [...users, { id: '4', username: 'kim', location: 'Seoul' }],
   )
-  assertEquals([...countryOf], [['2', 'FR'], ['3', 'JP'], ['4', 'KR']])
-  assertEquals(newRecipients, [{ x_id: '4', handle: 'kim', country: 'KR' }])
+  assert.deepEqual([...countryOf], [['2', 'FR'], ['3', 'JP'], ['4', 'KR']])
+  assert.deepEqual(newRecipients, [{ x_id: '4', handle: 'kim', country: 'KR' }])
 })
 
-Deno.test('resolveCountries: unknown user without includes → null, not cached', () => {
+test('resolveCountries: unknown user without includes → null, not cached', () => {
   const { countryOf, newRecipients } = resolveCountries(['9'], new Map(), new Map(), [])
-  assertEquals(countryOf.get('9'), null)
-  assertEquals(newRecipients, [])
+  assert.equal(countryOf.get('9'), null)
+  assert.deepEqual(newRecipients, [])
 })
 ```
 
 - [ ] **Step 2: Убедиться, что падает**
 
-Run: `deno test supabase/functions/_shared/planes.test.ts`
-Expected: FAIL — `Module not found "…/planes.ts"`
+Run: `npm test`
+Expected: FAIL — `Cannot find module '…/lib/planes.ts'`
 
 - [ ] **Step 3: Реализация**
 
-`supabase/functions/_shared/planes.ts`:
+`lib/planes.ts`:
 
 ```ts
 import { parseCountry } from './country.ts'
@@ -323,154 +339,42 @@ export function toPlanes(me: Me, tweets: Tweet[], users: XUser[], countryOf: Map
 
 - [ ] **Step 4: Тесты проходят**
 
-Run: `deno test supabase/functions/_shared/`
-Expected: PASS, все тесты Task 1 и Task 2
+Run: `npm test`
+Expected: PASS, все тесты Task 1–2
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/functions/_shared/planes.ts supabase/functions/_shared/planes.test.ts
+git add lib/planes.ts lib/planes.test.ts
 git commit -m "feat: turn replies into planes"
 ```
 
 ---
 
-### Task 3: Схема БД
+### Task 3: X-клиент
 
 **Files:**
-- Create: `supabase/migrations/20260928000000_init.sql`
+- Create: `lib/x.ts`
+- Test: `lib/x.test.ts`
 
 **Interfaces:**
-- Produces: таблицы `users`, `x_tokens`, `recipients`, `planes` (колонки как в Task 2 `Plane` / `Recipient`), Realtime на `planes`.
-
-- [ ] **Step 1: Supabase-проект**
-
-Нужен проект Supabase. Спросить у человека, взять существующий или создать новый (организация, регион). Записать `project-ref`, URL, publishable key, secret key.
-
-```bash
-npx supabase link --project-ref <project-ref>
-```
-
-- [ ] **Step 2: Миграция**
-
-`supabase/migrations/20260928000000_init.sql`:
-
-```sql
-create table users (
-  x_id text primary key,
-  handle text not null,
-  avatar_url text,
-  country text check (country ~ '^[A-Z]{2}$'),
-  country_manual boolean not null default false,
-  since_id text,
-  auth_user_id uuid unique references auth.users on delete cascade
-);
-
-create table x_tokens (
-  x_id text primary key references users on delete cascade,
-  access_token text not null,
-  refresh_token text,
-  expires_at timestamptz not null
-);
-
-create table recipients (
-  x_id text primary key,
-  handle text not null,
-  country text
-);
-
-create table planes (
-  id bigint generated always as identity primary key,
-  tweet_id text not null unique,
-  from_x_id text not null,
-  to_x_id text not null,
-  from_handle text not null,
-  to_handle text not null,
-  from_country text,
-  to_country text,
-  created_at timestamptz not null
-);
-
-alter table users enable row level security;
-alter table x_tokens enable row level security;   -- без политик: только service role
-alter table recipients enable row level security; -- без политик: только service role
-alter table planes enable row level security;
-
-create policy "planes are public" on planes for select to anon, authenticated using (true);
-create policy "read own user" on users for select to authenticated using (auth_user_id = auth.uid());
-create policy "update own user" on users for update to authenticated
-  using (auth_user_id = auth.uid()) with check (auth_user_id = auth.uid());
-
-grant select on planes to anon, authenticated;
-grant select on users to authenticated;
-revoke update on users from authenticated;
-grant update (country, country_manual) on users to authenticated;
-
-alter publication supabase_realtime add table planes;
-```
-
-- [ ] **Step 3: Применить**
-
-Run: `npx supabase db push`
-Expected: `Finished supabase db push.`
-
-- [ ] **Step 4: Проверить доступы**
-
-```bash
-curl -s "$SUPABASE_URL/rest/v1/planes?select=*" -H "apikey: $PUBLISHABLE_KEY"
-curl -s "$SUPABASE_URL/rest/v1/x_tokens?select=*" -H "apikey: $PUBLISHABLE_KEY"
-```
-
-Expected: первый `[]`; второй `[]` или ошибка permission denied (главное — не данные).
-
-В SQL-редакторе Supabase:
-
-```sql
-begin;
-set local role authenticated;
-update users set since_id = '1';
-rollback;
-```
-
-Expected: `ERROR: permission denied for table users`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add supabase/migrations/20260928000000_init.sql supabase/config.toml
-git commit -m "feat: database schema"
-```
-
----
-
-### Task 4: Сборщик (Edge Function `collect`)
-
-**Files:**
-- Create: `supabase/functions/_shared/x.ts`
-- Test: `supabase/functions/_shared/x.test.ts`
-- Create: `supabase/functions/collect/index.ts`
-- Modify: `supabase/config.toml` (секция функции)
-
-**Interfaces:**
-- Consumes: `parseCountry` (Task 1); `replyTargets`, `resolveCountries`, `toPlanes`, типы (Task 2); таблицы (Task 3).
+- Consumes: типы `Tweet`, `XUser` (Task 2)
 - Produces:
   ```ts
   class RateLimited extends Error; class Unauthorized extends Error
-  refresh(refreshToken: string | null, clientId: string, clientSecret: string, f?: typeof fetch)
-    : Promise<{ access_token: string; refresh_token: string | null; expires_at: string }>
   getTweets(token: string, userId: string, sinceId: string | null, f?: typeof fetch)
     : Promise<{ tweets: Tweet[]; users: XUser[]; newestId: string | null }>
   getMe(token: string, f?: typeof fetch): Promise<{ location?: string }>
   ```
-  HTTP: `POST /functions/v1/collect` с заголовком `x-cron-secret` → `{ users: number, planes: number }`.
 
-- [ ] **Step 1: Падающий тест X-клиента**
+- [ ] **Step 1: Падающий тест**
 
-`supabase/functions/_shared/x.test.ts`:
+`lib/x.test.ts`:
 
 ```ts
-import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@1'
-import { getTweets, RateLimited, refresh, Unauthorized } from './x.ts'
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { getTweets, RateLimited, Unauthorized } from './x.ts'
 
 const fake = (status: number, body: unknown, seen: string[] = []) =>
   ((url: string | URL | Request) => {
@@ -478,17 +382,17 @@ const fake = (status: number, body: unknown, seen: string[] = []) =>
     return Promise.resolve(new Response(JSON.stringify(body), { status }))
   }) as typeof fetch
 
-Deno.test('getTweets first run: 20 tweets, no since_id', async () => {
+test('getTweets first run: 20 tweets, no since_id', async () => {
   const seen: string[] = []
   const r = await getTweets('tok', '1', null, fake(200, { meta: { result_count: 0 } }, seen))
   const url = new URL(seen[0])
-  assertEquals(url.pathname, '/2/users/1/tweets')
-  assertEquals(url.searchParams.get('max_results'), '20')
-  assertEquals(url.searchParams.has('since_id'), false)
-  assertEquals(r, { tweets: [], users: [], newestId: null })
+  assert.equal(url.pathname, '/2/users/1/tweets')
+  assert.equal(url.searchParams.get('max_results'), '20')
+  assert.equal(url.searchParams.has('since_id'), false)
+  assert.deepEqual(r, { tweets: [], users: [], newestId: null })
 })
 
-Deno.test('getTweets with since_id: 100 tweets, parses includes and newest id', async () => {
+test('getTweets with since_id: 100 tweets, parses includes and newest id', async () => {
   const seen: string[] = []
   const body = {
     data: [{ id: '10', created_at: 'x', in_reply_to_user_id: '2' }],
@@ -497,51 +401,34 @@ Deno.test('getTweets with since_id: 100 tweets, parses includes and newest id', 
   }
   const r = await getTweets('tok', '1', '5', fake(200, body, seen))
   const url = new URL(seen[0])
-  assertEquals(url.searchParams.get('max_results'), '100')
-  assertEquals(url.searchParams.get('since_id'), '5')
-  assertEquals(r.newestId, '10')
-  assertEquals(r.users[0].username, 'bob')
+  assert.equal(url.searchParams.get('max_results'), '100')
+  assert.equal(url.searchParams.get('since_id'), '5')
+  assert.equal(r.newestId, '10')
+  assert.equal(r.users[0].username, 'bob')
 })
 
-Deno.test('getTweets: no new tweets keeps old since_id', async () => {
+test('getTweets: no new tweets keeps old since_id', async () => {
   const r = await getTweets('tok', '1', '5', fake(200, { meta: { result_count: 0 } }))
-  assertEquals(r.newestId, '5')
+  assert.equal(r.newestId, '5')
 })
 
-Deno.test('429 → RateLimited', async () => {
-  await assertRejects(() => getTweets('tok', '1', null, fake(429, {})), RateLimited)
+test('429 → RateLimited', async () => {
+  await assert.rejects(() => getTweets('tok', '1', null, fake(429, {})), RateLimited)
 })
 
-Deno.test('401 → Unauthorized', async () => {
-  await assertRejects(() => getTweets('tok', '1', null, fake(401, {})), Unauthorized)
-})
-
-Deno.test('refresh: dead token (400) → Unauthorized', async () => {
-  await assertRejects(() => refresh('r', 'id', 'secret', fake(400, { error: 'invalid_request' })), Unauthorized)
-})
-
-Deno.test('refresh: missing refresh token → Unauthorized without calling X', async () => {
-  const seen: string[] = []
-  await assertRejects(() => refresh(null, 'id', 'secret', fake(200, {}, seen)), Unauthorized)
-  assertEquals(seen.length, 0)
-})
-
-Deno.test('refresh: ok returns future expires_at', async () => {
-  const r = await refresh('r', 'id', 'secret', fake(200, { access_token: 'a2', refresh_token: 'r2', expires_in: 7200 }))
-  assertEquals(r.access_token, 'a2')
-  assertEquals(r.refresh_token, 'r2')
-  assert(new Date(r.expires_at).getTime() > Date.now())
+test('401 → Unauthorized', async () => {
+  await assert.rejects(() => getTweets('tok', '1', null, fake(401, {})), Unauthorized)
 })
 ```
 
 - [ ] **Step 2: Убедиться, что падает**
 
-Run: `deno test supabase/functions/_shared/x.test.ts`
-Expected: FAIL — `Module not found "…/x.ts"`
+Run: `npm test`
+Expected: FAIL — `Cannot find module '…/lib/x.ts'`
 
-- [ ] **Step 3: X-клиент**
+- [ ] **Step 3: Реализация**
 
-`supabase/functions/_shared/x.ts`:
+`lib/x.ts`:
 
 ```ts
 import type { Tweet, XUser } from './planes.ts'
@@ -557,26 +444,6 @@ async function get<T>(url: string, token: string, f: typeof fetch): Promise<T> {
   if (r.status === 401 || r.status === 403) throw new Unauthorized()
   if (!r.ok) throw new Error(`X ${r.status}: ${await r.text()}`)
   return r.json()
-}
-
-export async function refresh(refreshToken: string | null, clientId: string, clientSecret: string, f: typeof fetch = fetch) {
-  if (!refreshToken) throw new Unauthorized()
-  const r = await f(`${API}/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: 'Basic ' + btoa(`${clientId}:${clientSecret}`),
-    },
-    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
-  })
-  if (r.status === 400 || r.status === 401) throw new Unauthorized()
-  if (!r.ok) throw new Error(`X refresh ${r.status}: ${await r.text()}`)
-  const j = await r.json()
-  return {
-    access_token: j.access_token as string,
-    refresh_token: (j.refresh_token ?? refreshToken) as string | null,
-    expires_at: new Date(Date.now() + j.expires_in * 1000).toISOString(),
-  }
 }
 
 export async function getTweets(token: string, userId: string, sinceId: string | null, f: typeof fetch = fetch) {
@@ -601,281 +468,349 @@ export async function getMe(token: string, f: typeof fetch = fetch) {
 
 - [ ] **Step 4: Тесты проходят**
 
-Run: `deno test supabase/functions/_shared/`
-Expected: PASS, все тесты
+Run: `npm test`
+Expected: PASS, все тесты Task 1–3
 
-- [ ] **Step 5: Функция-сборщик**
-
-`supabase/functions/collect/index.ts`:
-
-```ts
-import { createClient } from 'npm:@supabase/supabase-js@2'
-import { parseCountry } from '../_shared/country.ts'
-import { type Me, replyTargets, resolveCountries, toPlanes } from '../_shared/planes.ts'
-import { getMe, getTweets, RateLimited, refresh, Unauthorized } from '../_shared/x.ts'
-
-const env = (k: string) => Deno.env.get(k)!
-const db = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'))
-
-type Token = { x_id: string; access_token: string; refresh_token: string | null; expires_at: string }
-type User = { x_id: string; handle: string; country: string | null; country_manual: boolean; since_id: string | null }
-
-const must = <T>({ data, error }: { data: T | null; error: unknown }) => {
-  if (error) throw error
-  return data as T
-}
-const toMap = (rows: { x_id: string; country: string | null }[]) => new Map(rows.map((r) => [r.x_id, r.country]))
-
-async function freshToken(t: Token): Promise<string> {
-  if (new Date(t.expires_at).getTime() > Date.now() + 60_000) return t.access_token
-  const r = await refresh(t.refresh_token, env('X_CLIENT_ID'), env('X_CLIENT_SECRET'))
-  must(await db.from('x_tokens').update(r).eq('x_id', t.x_id))
-  return r.access_token
-}
-
-async function collectUser(u: User, t: Token): Promise<number> {
-  const token = await freshToken(t)
-  const me: Me = { x_id: u.x_id, handle: u.handle, country: u.country }
-
-  if (!u.since_id && !u.country && !u.country_manual) {
-    me.country = parseCountry((await getMe(token)).location)
-    must(await db.from('users').update({ country: me.country }).eq('x_id', u.x_id))
-  }
-
-  const { tweets, users, newestId } = await getTweets(token, u.x_id, u.since_id)
-  const ids = replyTargets(me, tweets)
-  let planes: ReturnType<typeof toPlanes> = []
-
-  if (ids.length) {
-    const registered = must(await db.from('users').select('x_id, country').in('x_id', ids))
-    const cached = must(await db.from('recipients').select('x_id, country').in('x_id', ids))
-    const { countryOf, newRecipients } = resolveCountries(ids, toMap(registered), toMap(cached), users)
-    if (newRecipients.length) must(await db.from('recipients').upsert(newRecipients))
-    planes = toPlanes(me, tweets, users, countryOf)
-    must(await db.from('planes').upsert(planes, { onConflict: 'tweet_id', ignoreDuplicates: true }))
-  }
-
-  // since_id двигаем только после успешной записи самолётиков — иначе потеряем их
-  if (newestId !== u.since_id) must(await db.from('users').update({ since_id: newestId }).eq('x_id', u.x_id))
-  return planes.length
-}
-
-Deno.serve(async (req) => {
-  if (req.headers.get('x-cron-secret') !== env('CRON_SECRET')) return new Response('nope', { status: 401 })
-
-  const tokens = must<Token[]>(await db.from('x_tokens').select('*'))
-  const users = must<User[]>(
-    await db.from('users').select('x_id, handle, country, country_manual, since_id').in('x_id', tokens.map((t) => t.x_id)),
-  )
-  const tokenOf = new Map(tokens.map((t) => [t.x_id, t]))
-
-  // ponytail: юзеры по очереди в одном вызове; упрёмся в лимит времени Edge Function (~150 с) — батчить по since_id/курсору
-  let planes = 0
-  for (const u of users) {
-    try {
-      planes += await collectUser(u, tokenOf.get(u.x_id)!)
-    } catch (e) {
-      if (e instanceof RateLimited) break
-      if (e instanceof Unauthorized) {
-        await db.from('x_tokens').delete().eq('x_id', u.x_id)
-        continue
-      }
-      console.error(`collect @${u.handle}:`, e)
-    }
-  }
-  return Response.json({ users: users.length, planes })
-})
-```
-
-- [ ] **Step 6: Конфиг функции**
-
-В конец `supabase/config.toml`:
-
-```toml
-[functions.collect]
-verify_jwt = false
-```
-
-(Своя проверка через `x-cron-secret` — publishable key есть у всех, JWT-проверка тут не защищает.)
-
-- [ ] **Step 7: Проверить, что функция собирается**
-
-Run: `deno check supabase/functions/collect/index.ts`
-Expected: без ошибок
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/functions supabase/config.toml
-git commit -m "feat: collect edge function"
+git add lib/x.ts lib/x.test.ts
+git commit -m "feat: X API client"
 ```
 
 ---
 
-### Task 5: Next — Supabase-клиенты и логин через X
+### Task 4: Neon + Better Auth (логин через X)
 
 **Files:**
-- Create: `lib/supabase/client.ts`, `lib/supabase/server.ts`
-- Create: `app/LoginButton.tsx`, `app/auth/callback/route.ts`
+- Create: `lib/db.ts`, `lib/auth.ts`, `lib/auth-client.ts`, `app/api/auth/[...all]/route.ts`, `app/LoginButton.tsx`
+- Create: `db/schema.sql`
 - Create: `.env.local` (не коммитится)
 
 **Interfaces:**
-- Consumes: таблицы `users`, `x_tokens` (Task 3).
-- Produces: `createClient()` (браузер, `lib/supabase/client.ts`); `createServerSupabase()`, `createAdmin()` (`lib/supabase/server.ts`); `<LoginButton />`; маршрут `/auth/callback` → редирект на `/me` или `/?login=failed`.
+- Produces: `pool` (`lib/db.ts`); `auth` (`lib/auth.ts`) с полями юзера `handle`, `country`, `countryManual`, `sinceId`; `authClient` (`lib/auth-client.ts`); `<LoginButton />`. Таблицы `recipients`, `planes`, `collector`.
 
-- [ ] **Step 1: Зависимости и env**
+- [ ] **Step 1: Neon и X (делает человек — остановиться и попросить)**
+
+1. Vercel → проект → Storage → Marketplace → **Neon** → создать базу и привязать к проекту (пропишет `DATABASE_URL`). Локально: `vercel link && vercel env pull .env.local`.
+2. developer.x.com → проект и приложение → User authentication settings: Web App, Callback URL `http://localhost:3000/api/auth/callback/twitter`, Website URL `http://localhost:3000`. Скопировать OAuth 2.0 Client ID / Client Secret.
+
+Дописать в `.env.local`:
+
+```
+X_CLIENT_ID=...
+X_CLIENT_SECRET=...
+BETTER_AUTH_SECRET=<openssl rand -hex 32>
+BETTER_AUTH_URL=http://localhost:3000
+```
+
+Проверить, что `.env*` есть в `.gitignore`.
+
+- [ ] **Step 2: Зависимости и сервер Better Auth**
 
 ```bash
-npm i @supabase/supabase-js @supabase/ssr
+npm i better-auth pg
+npm i -D @types/pg
 ```
 
-`.env.local`:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-SUPABASE_SECRET_KEY=sb_secret_...
-```
-
-Проверить, что `.env*` есть в `.gitignore` (create-next-app добавляет).
-
-- [ ] **Step 2: Клиенты**
-
-`lib/supabase/client.ts`:
+`lib/db.ts`:
 
 ```ts
-import { createBrowserClient } from '@supabase/ssr'
+import { Pool } from 'pg'
 
-export const createClient = () =>
-  createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!)
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 ```
 
-`lib/supabase/server.ts`:
+`lib/auth.ts`:
 
 ```ts
-import { createServerClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { betterAuth } from 'better-auth'
+import { pool } from './db.ts'
 
-export async function createServerSupabase() {
-  const store = await cookies()
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
-    cookies: {
-      getAll: () => store.getAll(),
-      setAll: (list) => list.forEach(({ name, value, options }) => store.set(name, value, options)),
+export const auth = betterAuth({
+  database: pool,
+  socialProviders: {
+    twitter: {
+      clientId: process.env.X_CLIENT_ID!,
+      clientSecret: process.env.X_CLIENT_SECRET!,
+      disableDefaultScope: true, // дефолт тянет users.email — требует отдельной настройки в X
+      scope: ['users.read', 'tweet.read', 'offline.access'],
+      mapProfileToUser: (profile) => ({ handle: profile.data.username }),
     },
-  })
-}
-
-export const createAdmin = () =>
-  createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
-    auth: { persistSession: false },
-  })
+  },
+  user: {
+    additionalFields: {
+      handle: { type: 'string', required: false, input: false },
+      country: { type: 'string', required: false, input: false },
+      countryManual: { type: 'boolean', required: false, defaultValue: false, input: false },
+      sinceId: { type: 'string', required: false, input: false },
+    },
+  },
+})
 ```
 
-- [ ] **Step 3: Кнопка логина**
+`app/api/auth/[...all]/route.ts`:
+
+```ts
+import { toNextJsHandler } from 'better-auth/next-js'
+import { auth } from '@/lib/auth'
+
+export const { GET, POST } = toNextJsHandler(auth)
+```
+
+`lib/auth-client.ts`:
+
+```ts
+import { createAuthClient } from 'better-auth/react'
+
+export const authClient = createAuthClient()
+```
+
+- [ ] **Step 3: Таблицы**
+
+```bash
+npx auth@latest migrate
+```
+
+Expected: создаёт `user` (с колонками `handle`, `country`, `countryManual`, `sinceId`), `session`, `account`, `verification`.
+
+`db/schema.sql`:
+
+```sql
+create table if not exists recipients (
+  x_id text primary key,
+  handle text not null,
+  country text
+);
+
+create table if not exists planes (
+  id int generated always as identity primary key,
+  tweet_id text not null unique,
+  from_x_id text not null,
+  to_x_id text not null,
+  from_handle text not null,
+  to_handle text not null,
+  from_country text,
+  to_country text,
+  created_at timestamptz not null
+);
+
+create table if not exists collector (
+  id boolean primary key default true check (id),
+  last_run timestamptz not null default 'epoch'
+);
+insert into collector default values on conflict do nothing;
+```
+
+Run: `psql "$(grep ^DATABASE_URL .env.local | cut -d= -f2- | tr -d '"')" -f db/schema.sql`
+Expected: `CREATE TABLE` ×3, `INSERT 0 1`
+
+- [ ] **Step 4: Кнопка логина**
 
 `app/LoginButton.tsx`:
 
 ```tsx
 'use client'
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { authClient } from '@/lib/auth-client'
 
 export default function LoginButton() {
-  const [loggedIn, setLoggedIn] = useState(false)
-  useEffect(() => {
-    createClient().auth.getSession().then(({ data }) => setLoggedIn(!!data.session))
-  }, [])
-
-  if (loggedIn) return <a className="btn" href="/me">Your country</a>
-
-  const login = () =>
-    createClient().auth.signInWithOAuth({
-      provider: 'x',
-      options: { redirectTo: `${location.origin}/auth/callback`, scopes: 'tweet.read users.read offline.access' },
-    })
-  return <button className="btn" onClick={login}>Log in with X</button>
+  const { data: session } = authClient.useSession()
+  if (session) return <a className="btn" href="/me">Your country</a>
+  return (
+    <button className="btn" onClick={() => authClient.signIn.social({ provider: 'twitter', callbackURL: '/me' })}>
+      Log in with X
+    </button>
+  )
 }
 ```
 
-- [ ] **Step 4: Колбэк**
+Временно вставить `<LoginButton />` в `app/page.tsx` (окончательная страница — Task 6).
 
-`app/auth/callback/route.ts`:
+- [ ] **Step 5: Проверить логин**
 
-```ts
-import { NextResponse } from 'next/server'
-import { createAdmin, createServerSupabase } from '@/lib/supabase/server'
-
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const fail = NextResponse.redirect(`${origin}/?login=failed`)
-  const code = searchParams.get('code')
-  if (!code) return fail
-
-  const { data, error } = await (await createServerSupabase()).auth.exchangeCodeForSession(code)
-  if (error || !data.session.provider_token) return fail
-
-  const { user, provider_token, provider_refresh_token } = data.session
-  const m = user.user_metadata
-  const x_id: string = m.provider_id ?? m.sub
-  const admin = createAdmin()
-
-  // только эти колонки: повторный логин не трогает country / country_manual / since_id
-  const u = await admin
-    .from('users')
-    .upsert({ x_id, handle: m.user_name ?? m.preferred_username, avatar_url: m.avatar_url, auth_user_id: user.id })
-  const t = await admin.from('x_tokens').upsert({
-    x_id,
-    access_token: provider_token,
-    refresh_token: provider_refresh_token ?? null,
-    expires_at: new Date(Date.now() + 110 * 60_000).toISOString(), // токен X живёт 2 ч
-  })
-  if (u.error || t.error) {
-    console.error('callback', u.error ?? t.error)
-    return fail
-  }
-  return NextResponse.redirect(`${origin}/me`)
-}
-```
-
-- [ ] **Step 5: Настроить X и Supabase (руками, делает человек)**
-
-1. developer.x.com → проект и приложение → User authentication settings: Web App, Callback URL `https://<project-ref>.supabase.co/auth/v1/callback`, Website URL — будущий домен (можно временно `http://127.0.0.1:3000`). Скопировать OAuth 2.0 Client ID / Client Secret.
-2. Supabase → Authentication → Providers → **X / Twitter (OAuth 2.0)**: включить, вставить Client ID/Secret.
-3. Supabase → Authentication → URL Configuration → Redirect URLs: добавить `http://localhost:3000/auth/callback`.
-
-- [ ] **Step 6: Проверить логин**
-
-Run: `npm run dev`, открыть `http://localhost:3000`, временно вставить `<LoginButton />` в `app/page.tsx`, нажать, залогиниться в X.
-Expected: редирект на `/me` (пока 404 — это нормально, страница в Task 7). В SQL-редакторе:
+Run: `npm run dev`, открыть `http://localhost:3000`, нажать «Log in with X», разрешить доступ.
+Expected: редирект на `/me` (пока 404 — страница в Task 7). В БД:
 
 ```sql
-select u.handle, u.avatar_url is not null as has_avatar, t.refresh_token is not null as has_refresh
-from users u join x_tokens t using (x_id);
+select u.handle, a."accountId", a."refreshToken" is not null as has_refresh, a.scope
+from "user" u join account a on a."userId" = u.id;
 ```
 
-Expected: одна строка, `handle` — твой хэндл, `has_refresh = true`. Если `handle` пустой — посмотреть `user_metadata` (`select raw_user_meta_data from auth.users`) и поправить имена полей в колбэке. Если `has_refresh = false` — скоуп `offline.access` не дошёл, проверить настройки приложения X.
+Expected: одна строка — твой хэндл, числовой X id, `has_refresh = t`, в `scope` есть `offline.access`.
 
-- [ ] **Step 7: Повторный логин не сбрасывает страну (Review Focus 1)**
-
-```sql
-update users set country = 'JP', country_manual = true, since_id = '123';
-```
-
-Выйти (`localStorage.clear()` + очистить cookies для localhost), залогиниться снова.
-
-```sql
-select country, country_manual, since_id from users;
-```
-
-Expected: `JP | true | 123`. Вернуть: `update users set country = null, country_manual = false, since_id = null;`
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add lib app/LoginButton.tsx app/auth package.json package-lock.json
-git commit -m "feat: login with X"
+git add lib app db package.json package-lock.json
+git commit -m "feat: login with X via Better Auth on Neon"
+```
+
+---
+
+### Task 5: Сборщик + лента самолётиков
+
+**Files:**
+- Create: `lib/collect.ts`, `app/api/planes/route.ts`
+
+**Interfaces:**
+- Consumes: `pool` (Task 4), `auth` (Task 4), `parseCountry` (Task 1), `replyTargets`/`resolveCountries`/`toPlanes` (Task 2), `getTweets`/`getMe`/`RateLimited` (Task 3).
+- Produces:
+  - `collect(userId?: string): Promise<number>` — собрать (всех или одного юзера), вернуть число новых самолётиков.
+  - `collectIfDue(): Promise<void>` — собрать, если прошло ≥ 5 минут (замок).
+  - `GET /api/planes?after=<id>` → `PlaneRow[]` (`{ id: number; from_handle; to_handle; from_country; to_country }`), новые первыми, максимум 200.
+
+- [ ] **Step 1: Сборщик**
+
+`lib/collect.ts`:
+
+```ts
+import { auth } from './auth.ts'
+import { parseCountry } from './country.ts'
+import { pool } from './db.ts'
+import { type Me, replyTargets, resolveCountries, toPlanes } from './planes.ts'
+import { getMe, getTweets, RateLimited } from './x.ts'
+
+type Row = {
+  user_id: string; account_id: string; x_id: string; handle: string
+  country: string | null; country_manual: boolean | null; since_id: string | null
+}
+
+const toMap = (rows: { x_id: string; country: string | null }[]) => new Map(rows.map((r) => [r.x_id, r.country]))
+
+async function collectUser(r: Row): Promise<number> {
+  // Better Auth сам обновит протухший токен
+  const { accessToken } = await auth.api.getAccessToken({ body: { accountId: r.account_id, userId: r.user_id } })
+  const me: Me = { x_id: r.x_id, handle: r.handle, country: r.country }
+
+  if (!r.since_id && !r.country && !r.country_manual) {
+    me.country = parseCountry((await getMe(accessToken)).location)
+    await pool.query(`update "user" set country = $1 where id = $2`, [me.country, r.user_id])
+  }
+
+  const { tweets, users, newestId } = await getTweets(accessToken, r.x_id, r.since_id)
+  const ids = replyTargets(me, tweets)
+  let count = 0
+
+  if (ids.length) {
+    const registered = await pool.query(
+      `select a."accountId" as x_id, u.country from account a join "user" u on u.id = a."userId"
+       where a."providerId" = 'twitter' and a."accountId" = any($1)`, [ids])
+    const cached = await pool.query(`select x_id, country from recipients where x_id = any($1)`, [ids])
+    const { countryOf, newRecipients } = resolveCountries(ids, toMap(registered.rows), toMap(cached.rows), users)
+
+    await pool.query(
+      `insert into recipients (x_id, handle, country)
+       select x_id, handle, country from json_populate_recordset(null::recipients, $1::json)
+       on conflict (x_id) do nothing`, [JSON.stringify(newRecipients)])
+
+    const planes = toPlanes(me, tweets, users, countryOf)
+    const res = await pool.query(
+      `insert into planes (tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_country, to_country, created_at)
+       select tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_country, to_country, created_at
+       from json_populate_recordset(null::planes, $1::json)
+       on conflict (tweet_id) do nothing`, [JSON.stringify(planes)])
+    count = res.rowCount ?? 0
+  }
+
+  // since_id двигаем строго после вставки самолётиков — иначе потеряем их
+  if (newestId !== r.since_id) await pool.query(`update "user" set "sinceId" = $1 where id = $2`, [newestId, r.user_id])
+  return count
+}
+
+export async function collect(userId?: string): Promise<number> {
+  const { rows } = await pool.query<Row>(
+    `select u.id as user_id, a.id as account_id, a."accountId" as x_id, u.handle, u.country,
+            u."countryManual" as country_manual, u."sinceId" as since_id
+     from "user" u join account a on a."userId" = u.id and a."providerId" = 'twitter'
+     where a."refreshToken" is not null and ($1::text is null or u.id = $1)`, [userId ?? null])
+
+  // ponytail: юзеры по очереди в одном вызове; упрёмся в лимит времени функции (300 с) — батчить курсором
+  let planes = 0
+  for (const r of rows) {
+    try {
+      planes += await collectUser(r)
+    } catch (e) {
+      if (e instanceof RateLimited) break
+      console.error(`collect @${r.handle}:`, e) // мёртвый токен и прочее: пропускаем, остальные собираются
+    }
+  }
+  return planes
+}
+
+export async function collectIfDue(): Promise<void> {
+  const { rowCount } = await pool.query(
+    `update collector set last_run = now() where last_run < now() - interval '5 minutes'`)
+  if (rowCount) await collect()
+}
+```
+
+- [ ] **Step 2: Лента**
+
+`app/api/planes/route.ts`:
+
+```ts
+import { after } from 'next/server'
+import { collectIfDue } from '@/lib/collect'
+import { pool } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET(req: Request) {
+  after(collectIfDue)
+  const since = Number(new URL(req.url).searchParams.get('after')) || 0
+  const { rows } = await pool.query(
+    `select id, from_handle, to_handle, from_country, to_country
+     from planes where id > $1 order by id desc limit 200`, [since])
+  return Response.json(rows)
+}
+```
+
+- [ ] **Step 3: Типы и сборка**
+
+Run: `npx tsc --noEmit && npm test`
+Expected: без ошибок, все тесты PASS
+
+- [ ] **Step 4: Проверить на живом реплае**
+
+Ответить кому-нибудь в X с залогиненного аккаунта. Сбросить замок и дёрнуть ленту:
+
+```sql
+update collector set last_run = 'epoch';
+```
+
+```bash
+curl -s localhost:3000/api/planes
+```
+
+Подождать ~10 секунд (сбор идёт после ответа), повторить `curl`.
+Expected: во втором ответе есть `{"from_handle":"<ты>","to_handle":"<кому ответил>",...}`. В БД `select "sinceId", country from "user";` — `sinceId` заполнен, `country` распознан из профиля или `null`.
+
+- [ ] **Step 5: Нет дублей**
+
+```sql
+update collector set last_run = 'epoch';
+```
+
+Run: `curl -s localhost:3000/api/planes >/dev/null`, подождать 10 секунд.
+Expected: `select count(*), count(distinct tweet_id) from planes;` — числа равны.
+
+- [ ] **Step 6: Замок (Review Focus 5)**
+
+```sql
+update collector set last_run = 'epoch';
+```
+
+```bash
+for i in 1 2 3 4 5; do curl -s localhost:3000/api/planes >/dev/null & done; wait
+```
+
+Expected: в логе `npm run dev` нет пяти параллельных сборов (добавить временно `console.log('collect run')` в начало `collect` и убрать после проверки) — ровно одна строка `collect run`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add lib/collect.ts app/api/planes
+git commit -m "feat: visit-triggered collector and planes feed"
 ```
 
 ---
@@ -883,23 +818,21 @@ git commit -m "feat: login with X"
 ### Task 6: Карта с самолётиками
 
 **Files:**
-- Create: `lib/geo.ts`
-- Test: `lib/geo.test.ts`
-- Create: `app/PlaneMap.tsx`
+- Create: `lib/geo.ts`, `lib/geo.test.ts`, `app/PlaneMap.tsx`
 - Modify: `app/page.tsx`, `app/globals.css`, `app/layout.tsx`
 
 **Interfaces:**
-- Consumes: `createClient` (Task 5), таблица `planes` + Realtime (Task 3).
-- Produces: `lib/geo.ts`: `W`, `H`, `FOG`, `projection`, `path`, `land` (features), `at(iso: string | null): [number, number]`.
+- Consumes: `GET /api/planes` (Task 5), `<LoginButton />` (Task 4).
+- Produces: `lib/geo.ts`: `W`, `H`, `FOG`, `projection`, `path`, `land`, `at(iso: string | null): [number, number]`.
 
 - [ ] **Step 1: Зависимости**
 
 ```bash
-npm i d3-geo topojson-client world-atlas i18n-iso-countries
+npm i d3-geo topojson-client world-atlas
 npm i -D @types/d3-geo @types/topojson-client
 ```
 
-- [ ] **Step 2: Падающий тест (Review Focus 4)**
+- [ ] **Step 2: Падающий тест (Review Focus 3)**
 
 `lib/geo.test.ts`:
 
@@ -921,8 +854,8 @@ test('null, unknown code and country without 110m geometry → fog', () => {
 })
 ```
 
-Run: `node --test lib/geo.test.ts`
-Expected: FAIL — `Cannot find module …/lib/geo.ts`
+Run: `npm test`
+Expected: FAIL — `Cannot find module '…/lib/geo.ts'`
 
 - [ ] **Step 3: Геометрия**
 
@@ -954,8 +887,8 @@ export function at(iso: string | null): [number, number] {
 }
 ```
 
-Run: `node --test lib/geo.test.ts`
-Expected: PASS, 2 tests
+Run: `npm test`
+Expected: PASS
 
 - [ ] **Step 4: Компонент карты**
 
@@ -964,47 +897,49 @@ Expected: PASS, 2 tests
 ```tsx
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { at, H, land, path, projection, W, FOG } from '@/lib/geo'
-import { createClient } from '@/lib/supabase/client'
+import { at, FOG, H, land, path, projection, W } from '@/lib/geo'
 
 type Plane = { id: number; from_handle: string; to_handle: string; from_country: string | null; to_country: string | null }
 type Flight = Plane & { key: string }
 
 const MAX_FLIGHTS = 200
+const POLL_MS = 20_000
 const [fogX, fogY] = projection(FOG)!
+
+const fetchPlanes = (after: number): Promise<Plane[]> =>
+  fetch(`/api/planes?after=${after}`).then((r) => (r.ok ? r.json() : []))
 
 export default function PlaneMap() {
   const [flights, setFlights] = useState<Flight[]>([])
 
   useEffect(() => {
-    const db = createClient()
     let history: Plane[] = []
+    let lastId = 0
+    const timers: ReturnType<typeof setTimeout>[] = []
     const fly = (p: Plane) =>
       setFlights((f) => [...f.slice(-(MAX_FLIGHTS - 1)), { ...p, key: `${p.id}-${performance.now()}` }])
 
-    db.from('planes')
-      .select('id, from_handle, to_handle, from_country, to_country')
-      .order('id', { ascending: false })
-      .limit(MAX_FLIGHTS)
-      .then(({ data }) => {
-        history = data ?? []
-        history.slice(0, 20).forEach(fly)
-      })
+    const take = (planes: Plane[]) => {
+      if (planes.length) lastId = Math.max(lastId, planes[0].id)
+      history = [...planes, ...history].slice(0, MAX_FLIGHTS)
+      return planes
+    }
 
-    const channel = db
-      .channel('planes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'planes' }, ({ new: p }) => {
-        history.unshift(p as Plane)
-        fly(p as Plane)
-      })
-      .subscribe()
+    fetchPlanes(0).then((planes) => take(planes).slice(0, 20).forEach(fly))
+
+    // новые приходят пачкой — раскидываем вылеты по интервалу опроса
+    const poll = setInterval(async () => {
+      const fresh = take(await fetchPlanes(lastId))
+      fresh.forEach((p, i) => timers.push(setTimeout(() => fly(p), (i * POLL_MS) / fresh.length)))
+    }, POLL_MS)
 
     // карта не должна стоять: раз в 2.5 с перелетает случайный старый самолётик
     const replay = setInterval(() => history.length && fly(history[Math.floor(Math.random() * history.length)]), 2500)
 
     return () => {
+      clearInterval(poll)
       clearInterval(replay)
-      db.removeChannel(channel)
+      timers.forEach(clearTimeout)
     }
   }, [])
 
@@ -1077,6 +1012,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 16px; }
 h1 { margin: 0; font-size: 1.6rem; }
 header p { margin: 0; opacity: .7; flex: 1; min-width: 200px; }
+a { color: var(--accent); }
 .btn { background: var(--fg); color: var(--bg); border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
 .map { width: 100%; height: auto; display: block; }
 .ocean { fill: #0f1730; }
@@ -1085,6 +1021,7 @@ header p { margin: 0; opacity: .7; flex: 1; min-width: 200px; }
 .trail { fill: none; stroke: var(--accent); stroke-width: 1.2; animation: trail 12s forwards; }
 .plane { fill: var(--fg); font-size: 16px; animation: land 3.6s forwards; pointer-events: none; }
 .pulse { fill: var(--accent); animation: trail 4s forwards; }
+select { font: inherit; padding: 6px; }
 @keyframes trail { from { opacity: .9; } to { opacity: .08; } }
 @keyframes land { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .plane { display: none; } .trail, .pulse { animation: none; opacity: .5; } }
@@ -1092,7 +1029,7 @@ header p { margin: 0; opacity: .7; flex: 1; min-width: 200px; }
 
 - [ ] **Step 6: Проверить в браузере**
 
-В SQL-редакторе вставить тестовые самолётики:
+Вставить тестовые самолётики:
 
 ```sql
 insert into planes (tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_country, to_country, created_at) values
@@ -1102,9 +1039,9 @@ insert into planes (tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_c
 ```
 
 Run: `npm run dev`, открыть `http://localhost:3000`.
-Expected: самолётики летят RU→BR и BR→туман, над Германией пульс; при наведении на след — `@alice → @bob`. Вставить ещё одну строку (`test-4`, `US`→`JP`) при открытой странице — самолётик вылетает сразу (Realtime). Ширина 375px — карта влезает без горизонтального скролла.
+Expected: самолётики летят RU→BR и BR→туман, над Германией пульс; наведение на след — `@alice → @bob`. Вставить `test-4` (`US`→`JP`) при открытой странице — самолётик вылетает в течение ~40 секунд. На ширине 375px карта влезает без горизонтального скролла.
 
-Удалить тестовые: `delete from planes where tweet_id like 'test-%';`
+Удалить: `delete from planes where tweet_id like 'test-%';`
 
 - [ ] **Step 7: Commit**
 
@@ -1118,164 +1055,154 @@ git commit -m "feat: live plane map"
 ### Task 7: Выбор страны `/me`
 
 **Files:**
-- Create: `app/me/page.tsx`
+- Create: `app/api/me/route.ts`, `app/me/page.tsx`
 
 **Interfaces:**
-- Consumes: `createClient` (Task 5); политики `users` (Task 3).
+- Consumes: `auth` (Task 4), `pool` (Task 4), `collect` (Task 5), `isCountry`/`countryNames` (Task 1).
+- Produces: `GET /api/me` → `{ handle: string; country: string | null }` или 401; `POST /api/me` `{ country: string | null }` → 204 / 400 / 401.
 
-- [ ] **Step 1: Страница**
+- [ ] **Step 1: API**
+
+`app/api/me/route.ts`:
+
+```ts
+import { after } from 'next/server'
+import { headers } from 'next/headers'
+import { auth } from '@/lib/auth'
+import { collect } from '@/lib/collect'
+import { isCountry } from '@/lib/country'
+import { pool } from '@/lib/db'
+
+const session = async () => auth.api.getSession({ headers: await headers() })
+
+export async function GET() {
+  const s = await session()
+  if (!s) return new Response(null, { status: 401 })
+  const { rows } = await pool.query(`select handle, country, "sinceId" as since_id from "user" where id = $1`, [s.user.id])
+  const me = rows[0]
+  if (!me.since_id) after(() => collect(s.user.id)) // новый юзер — сразу собрать его реплаи
+  return Response.json({ handle: me.handle, country: me.country })
+}
+
+export async function POST(req: Request) {
+  const s = await session()
+  if (!s) return new Response(null, { status: 401 })
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== 'object' || !('country' in body)) return new Response('bad body', { status: 400 })
+  const { country } = body
+  if (country !== null && !isCountry(country)) return new Response('bad country', { status: 400 })
+  await pool.query(`update "user" set country = $1, "countryManual" = true where id = $2`, [country, s.user.id])
+  return new Response(null, { status: 204 })
+}
+```
+
+- [ ] **Step 2: Страница**
 
 `app/me/page.tsx`:
 
 ```tsx
 'use client'
-import { useEffect, useMemo, useState } from 'react'
-import countries from 'i18n-iso-countries'
-import en from 'i18n-iso-countries/langs/en.json'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react'
+import { countryNames } from '@/lib/country'
 
-countries.registerLocale(en)
-
-type Me = { x_id: string; handle: string; country: string | null }
+type Me = { handle: string; country: string | null }
+const options = countryNames()
 
 export default function MePage() {
-  const db = useMemo(() => createClient(), [])
   const [me, setMe] = useState<Me | null | undefined>(undefined)
-  const [saved, setSaved] = useState(false)
-  const options = useMemo(
-    () => Object.entries(countries.getNames('en')).sort((a, b) => a[1].localeCompare(b[1])),
-    [],
-  )
+  const [status, setStatus] = useState('')
 
   useEffect(() => {
-    db.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return setMe(null)
-      const { data: row } = await db.from('users').select('x_id, handle, country').eq('auth_user_id', data.user.id).single()
-      setMe(row)
-    })
-  }, [db])
+    fetch('/api/me').then(async (r) => setMe(r.ok ? await r.json() : null))
+  }, [])
 
   if (me === undefined) return <main>Loading…</main>
   if (me === null) return <main><a className="btn" href="/">Log in first</a></main>
 
-  const save = async (country: string) => {
-    const { error } = await db.from('users').update({ country: country || null, country_manual: true }).eq('x_id', me.x_id)
-    if (!error) {
-      setMe({ ...me, country: country || null })
-      setSaved(true)
-    }
+  const save = async (value: string) => {
+    const country = value || null
+    const r = await fetch('/api/me', { method: 'POST', body: JSON.stringify({ country }) })
+    if (r.ok) setMe({ ...me, country })
+    setStatus(r.ok ? 'Saved ✈' : 'Could not save, try again')
   }
 
   return (
     <main>
       <h1>@{me.handle}</h1>
-      <label>
-        Your planes take off from{' '}
-        <select value={me.country ?? ''} onChange={(e) => save(e.target.value)}>
-          <option value="">☁ the fog (unknown)</option>
-          {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-        </select>
-      </label>
-      {saved && <p>Saved ✈</p>}
+      <p>
+        <label>
+          Your planes take off from{' '}
+          <select value={me.country ?? ''} onChange={(e) => save(e.target.value)}>
+            <option value="">☁ the fog (unknown)</option>
+            {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+        </label>
+      </p>
+      <p role="status">{status}</p>
       <p><a href="/">← back to the map</a></p>
     </main>
   )
 }
 ```
 
-- [ ] **Step 2: Проверить**
+- [ ] **Step 3: Проверить мусор на входе (Review Focus 4)**
 
-Run: `npm run dev`, залогиниться, открыть `/me`, выбрать `Japan`.
-Expected: «Saved ✈»; в SQL `select country, country_manual from users;` → `JP | true`. Без логина `/me` показывает «Log in first».
+Run: `npm run dev`, залогиниться, в DevTools-консоли на `localhost:3000`:
 
-- [ ] **Step 3: Commit**
+```js
+for (const country of ['xx', 'RUS', 123, '<script>', 'XX']) {
+  const r = await fetch('/api/me', { method: 'POST', body: JSON.stringify({ country }) })
+  console.log(country, r.status)
+}
+console.log('garbage', (await fetch('/api/me', { method: 'POST', body: 'not json' })).status)
+```
+
+Expected: все `400`, включая `garbage`. `select country from "user";` — страна не изменилась, мусора нет. `{ country: null }` → `204` (это «туман», легально).
+
+Без логина: `curl -s -o /dev/null -w '%{http_code}' -X POST localhost:3000/api/me -d '{"country":"DE"}'` → `401`.
+
+- [ ] **Step 4: Проверить UI**
+
+Открыть `/me`, выбрать `Japan`.
+Expected: «Saved ✈»; `select country, "countryManual" from "user";` → `JP | t`. Следующий сбор не перезаписывает страну (сборщик трогает её только если `country` пуст и `countryManual` ложь).
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add app/me
+git add app/api/me app/me
 git commit -m "feat: country picker"
 ```
 
 ---
 
-### Task 8: Деплой и крон
+### Task 8: Деплой
 
-**Files:**
-- Create: `supabase/migrations/20260928000100_cron.sql`
+**Files:** —
 
-**Interfaces:**
-- Consumes: всё выше.
+- [ ] **Step 1: Env на Vercel (делает человек — остановиться и попросить)**
 
-- [ ] **Step 1: Секреты функции и деплой**
+`DATABASE_URL` уже прописан интеграцией Neon. Добавить:
 
 ```bash
-CRON_SECRET=$(openssl rand -hex 24)
-npx supabase secrets set X_CLIENT_ID=<client-id> X_CLIENT_SECRET=<client-secret> CRON_SECRET=$CRON_SECRET
-npx supabase functions deploy collect --no-verify-jwt
+vercel env add X_CLIENT_ID production
+vercel env add X_CLIENT_SECRET production
+vercel env add BETTER_AUTH_SECRET production
+vercel env add BETTER_AUTH_URL production   # https://<прод-домен>
 ```
 
-- [ ] **Step 2: Ручной прогон сборщика**
+В приложении X: добавить Callback URL `https://<прод-домен>/api/auth/callback/twitter`, Website URL — прод-домен.
 
-Залогиниться на сайте, ответить кому-нибудь в X, затем:
+- [ ] **Step 2: Деплой**
+
+Run: `vercel deploy --prod`
+Expected: `Production: https://…` без ошибок сборки.
+
+- [ ] **Step 3: Смоук на проде**
+
+Открыть прод, залогиниться, выбрать страну, ответить кому-то в X, держать карту открытой ≤ 6 минут.
+Expected: самолётик вылетает сам. В дашборде X (Usage) проверить, по какому тарифу посчитаны чтения `users/:id/tweets` — owned read ($0.001) или обычный ($0.005); записать результат в раздел «Ограничения» спеки и закоммитить.
 
 ```bash
-curl -s -X POST "https://<project-ref>.supabase.co/functions/v1/collect" -H "x-cron-secret: $CRON_SECRET"
-curl -s -X POST "https://<project-ref>.supabase.co/functions/v1/collect"
-```
-
-Expected: первый — `{"users":1,"planes":N}` с `N ≥ 1`, в `planes` строка с твоим реплаем; второй — `nope` (401). Повторный первый запрос — `"planes":0` (since_id сдвинулся, дублей нет).
-
-Проверка Review Focus 5: `update x_tokens set expires_at = now(), refresh_token = 'dead';` → прогон → строка из `x_tokens` удалена, ответ `{"users":1,"planes":0}` без 500. Перелогиниться, чтобы вернуть токен.
-
-- [ ] **Step 3: Крон**
-
-В SQL-редакторе (секреты не коммитим):
-
-```sql
-select vault.create_secret('https://<project-ref>.supabase.co', 'project_url');
-select vault.create_secret('<CRON_SECRET>', 'cron_secret');
-```
-
-`supabase/migrations/20260928000100_cron.sql`:
-
-```sql
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
-
-select cron.schedule('collect-planes', '*/5 * * * *', $$
-  select net.http_post(
-    url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/collect',
-    headers := jsonb_build_object(
-      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
-    ),
-    timeout_milliseconds := 120000
-  )
-$$);
-```
-
-Run: `npx supabase db push`
-Через 5–10 минут: `select status, return_message from cron.job_run_details order by start_time desc limit 3;`
-Expected: `succeeded`.
-
-- [ ] **Step 4: Vercel**
-
-```bash
-vercel link
-vercel env add NEXT_PUBLIC_SUPABASE_URL production
-vercel env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY production
-vercel env add SUPABASE_SECRET_KEY production
-vercel deploy --prod
-```
-
-Затем: Supabase → Authentication → URL Configuration: Site URL = прод-домен, в Redirect URLs добавить `https://<домен>/auth/callback`. В приложении X Website URL = прод-домен.
-
-- [ ] **Step 5: Смоук на проде**
-
-Открыть прод, залогиниться, выбрать страну, ответить кому-то в X, подождать ≤5 минут с открытой картой.
-Expected: самолётик вылетает сам (Realtime). В дашборде X (Usage) проверить, по какому тарифу посчитаны чтения `users/:id/tweets` — owned read ($0.001) или обычный ($0.005); записать в спеку.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add supabase/migrations/20260928000100_cron.sql
-git commit -m "feat: schedule collector"
+git add docs/superpowers/specs/2026-09-28-paper-planes-design.md
+git commit -m "docs: record real X API read pricing"
 ```

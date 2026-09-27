@@ -2,16 +2,16 @@
 
 ## Идея
 
-Живая карта мира. Каждый реплай в X между залогиненными юзерами — бумажный самолётик,
-летящий из страны ответившего в страну того, кому ответили. Ботов нет, специально ничего
-писать не надо — люди просто общаются в X, а сайт это визуализирует.
+Живая карта мира. Каждый реплай в X, написанный залогиненным юзером, — бумажный самолётик,
+летящий из его страны в страну того, кому ответили. Ботов нет, специально ничего писать
+не надо — люди просто общаются в X, а сайт это визуализирует.
 
 Вирусная петля: «твои самолётики к друзьям летят, а их к тебе — нет, пока они не зайдут».
 
 ## Ограничения
 
 - Весь поток реплаев X не отдаёт (firehose — Enterprise). Отслеживаем только реплаи
-  **залогиненных** юзеров, читая их собственные твиты.
+  **залогиненных** юзеров, читая их собственные твиты их же токеном.
 - Цена X API (pay-per-use, 2026): чтение своих данных ~$0.001, чужих — $0.005 за объект.
   Допущение: `GET /2/users/:id/tweets` с токеном самого юзера тарифицируется как owned read —
   **проверить в дашборде X после первого прогона**.
@@ -19,69 +19,82 @@
 
 ## Стек
 
-- Next.js (App Router) на Vercel.
-- Supabase: Auth (провайдер X, OAuth 2.0), Postgres, Realtime, Edge Function, pg_cron.
-- Карта: `d3-geo` + `world-atlas` (TopoJSON стран), рендер в SVG.
+- Next.js (App Router) на Vercel — страницы, API-роуты, сборщик.
+- Neon Postgres (через Vercel Marketplace, `DATABASE_URL`), драйвер `pg`.
+- Better Auth — логин через X (провайдер `twitter`, OAuth 2.0). Хранит токены в своей
+  таблице `account` и сам их обновляет (`auth.api.getAccessToken`).
+- Карта: `d3-geo` + `world-atlas` (TopoJSON стран), SVG, анимация `<animateMotion>`.
+- Браузер в базу не ходит — только через API-роуты. RLS не нужен.
 
 ## Данные
 
-`users`
-- `x_id` text PK
-- `handle`, `avatar_url` text
-- `country` text null — ISO-3166 alpha-2, null = «туман»
-- `country_manual` bool — юзер выбрал сам, парсер больше не трогает
-- `access_token`, `refresh_token` text, `token_expires_at` timestamptz
-- `since_id` text null — последний обработанный твит
-- `auth_user_id` uuid → `auth.users`
+Таблицы Better Auth (`user`, `session`, `account`, `verification`) создаёт его CLI.
+В `user` добавляем поля (additionalFields, клиенту на запись недоступны):
+- `handle` — X username
+- `country` — ISO-3166 alpha-2, null = «туман»
+- `countryManual` — юзер выбрал сам, сборщик больше не трогает
+- `sinceId` — последний обработанный твит
 
-`recipients` — кэш стран незалогиненных получателей
-- `x_id` text PK, `handle` text, `country` text null
+X id юзера — `account."accountId"` (для `providerId = 'twitter'`).
 
-`planes`
-- `id` bigserial PK
-- `tweet_id` text unique (идемпотентность)
-- `from_x_id`, `to_x_id` text
-- `from_handle`, `to_handle` text
-- `from_country`, `to_country` text null
-- `created_at` timestamptz — время твита
+Свои таблицы:
 
-RLS: `planes` читают все (anon); `users` — только свой ряд, и только `country` на запись.
-Токены недоступны клиенту вообще (service role only).
+`recipients` — кэш стран незалогиненных получателей: `x_id` PK, `handle`, `country`.
+
+`planes`: `id` int identity PK, `tweet_id` unique (идемпотентность), `from_x_id`, `to_x_id`,
+`from_handle`, `to_handle`, `from_country`, `to_country`, `created_at` (время твита).
+
+`collector` — одна строка `last_run timestamptz`: замок и расписание сборщика.
 
 ## Потоки
 
-**Логин.** Supabase Auth → X, скоупы `tweet.read users.read offline.access`.
-После колбэка сервер сохраняет `provider_token` / `provider_refresh_token` в `users`
-(Supabase их сам не хранит), парсит `location` профиля в страну.
+**Логин.** Better Auth → X, скоупы `users.read tweet.read offline.access`
+(дефолтный `users.email` отключаем — он требует отдельной настройки в X).
+`handle` берём из профиля (`mapProfileToUser`).
 
-**Сборщик** (Edge Function, pg_cron раз в 5 мин). Для каждого юзера:
-1. Токен истекает → рефреш через X OAuth2 (`client_id`/`client_secret`). Рефреш упал →
-   токены обнуляем, юзер пропускается до следующего логина.
-2. `GET /2/users/:id/tweets?since_id=…&tweet.fields=in_reply_to_user_id,created_at&expansions=in_reply_to_user_id&user.fields=location,profile_image_url`
-3. Берём твиты с `in_reply_to_user_id`, не равным самому юзеру.
-4. Страна получателя: из `users`, если залогинен; иначе из `recipients`; иначе парсим
+**Сборщик — по визитам, без крона.** Каждый запрос карты (`GET /api/planes`) в фоне
+(`after()`) пробует взять замок:
+`update collector set last_run = now() where last_run < now() - interval '5 minutes'`.
+Обновилась строка — этот запрос и собирает; нет — кто-то собирал недавно.
+Нет посетителей — нет запросов к X — нет расходов. Для нового юзера `GET /api/me`
+сразу запускает сбор только по нему (если `sinceId` пуст), чтобы самолётики полетели сразу.
+
+Сбор для каждого юзера:
+1. Токен: `auth.api.getAccessToken` (обновит сам). Ошибка → юзер пропускается, лог.
+2. Первый раз и страна не задана → `GET /2/users/me?user.fields=location` → парсим страну.
+3. `GET /2/users/:id/tweets` с `since_id`, `max_results` 20 в первый раз и 100 дальше.
+4. Берём реплаи другим людям (не себе, не без адресата).
+5. Страна получателя: из `user`, если залогинен; иначе из `recipients`; иначе парсим
    `location` из expansions и кладём в `recipients`.
-5. `insert … on conflict (tweet_id) do nothing` в `planes`, обновляем `since_id`.
-6. 429 от X → прекращаем прогон, продолжим в следующий.
+6. `insert … on conflict (tweet_id) do nothing`, потом двигаем `sinceId`
+   (строго после вставки — иначе потеряем самолётики).
+7. 429 от X → прекращаем прогон, продолжим в следующий.
 
-Первый прогон после логина: без `since_id`, `max_results=20` — чтобы у нового юзера
-сразу что-то полетело.
+Ограничение: если сайт долго не открывают и у юзера набралось > 100 реплаев, лишние
+теряются (пагинацию не делаем). Станет заметно — бесплатный крон GitHub Actions на тот же
+эндпоинт.
 
-**Карта.** Страница грузит последние 200 самолётиков, дальше подписка на Realtime
-`INSERT` в `planes`. Новый самолётик летит по дуге (great circle, `d3.geoInterpolate`)
-от центроида страны до центроида, ~3 сек, в конце — короткая вспышка. Хвост маршрута
-тает. Страна `null` → точка «туман» (облачко в океане). Клик по самолётику — `@a → @b`.
+**Карта.** Грузит последние 200 самолётиков, дальше раз в 20 секунд `GET /api/planes?after=<id>`;
+новые из пачки вылетают вразнобой в течение этих 20 секунд. Самолётик летит по дуге
+(great circle) от центроида страны до центроида, ~3 сек, след тает. Страна `null` или без
+геометрии на карте → «туман» (облачко в Тихом океане). Одна страна → пульс на месте.
+Подпись `@a → @b` — нативный `<title>`. Чтобы карта не стояла, раз в 2.5 с перелетает
+случайный самолётик из истории.
 
-**Настройки.** `/me`: выпадающий список стран → `country`, `country_manual = true`.
+**Настройки.** `/me`: выпадающий список стран → `POST /api/me` (валидация ISO-кода) →
+`country`, `countryManual = true`.
 
 ## Парсер страны
 
-Чистая функция `parseCountry(location: string): string | null`:
-флаг-эмодзи → ISO; название страны (en/ru) → ISO; топ-городов → ISO; иначе null.
-Словарь — один JSON-файл. Проверка: `parseCountry.test.ts` с десятком примеров
-(«Moscow», «🇧🇷», «Berlin, Germany», «на луне 🌙» → null).
+Чистая функция `parseCountry(location: string | null | undefined): string | null`:
+флаг-эмодзи → ISO; название страны (en/ru, `i18n-iso-countries`) → ISO; словарь городов
+и алиасов → ISO; иначе null. Проверка — `node --test`.
+
+## Тексты
+
+Интерфейс на английском — карта глобальная.
 
 ## Не делаем сейчас
 
-Статистика, лидерборды, карточки для шеринга, профиль юзера, модерация.
+Статистика, лидерборды, карточки для шеринга, профиль юзера, модерация, крон.
 Добавим, когда базовая карта заработает и появятся живые люди.

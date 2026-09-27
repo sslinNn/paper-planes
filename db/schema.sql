@@ -21,3 +21,6 @@ create table if not exists collector (
   last_run timestamptz not null default 'epoch'
 );
 insert into collector default values on conflict do nothing;
+
+-- после `npx auth migrate`: отметка последнего сбора по юзеру (замок от накрутки X API)
+alter table "user" add column if not exists "collectedAt" timestamptz;

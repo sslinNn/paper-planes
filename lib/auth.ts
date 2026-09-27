@@ -3,6 +3,7 @@ import { pool } from './db.ts'
 
 export const auth = betterAuth({
   database: pool,
+  account: { encryptOAuthTokens: true }, // refresh-токены X не должны лежать в базе открыто
   socialProviders: {
     twitter: {
       clientId: process.env.X_CLIENT_ID!,

@@ -12,6 +12,12 @@ type Row = {
 const toMap = (rows: { x_id: string; country: string | null }[]) => new Map(rows.map((r) => [r.x_id, r.country]))
 
 async function collectUser(r: Row): Promise<number> {
+  // один сбор на юзера раз в 4 минуты — иначе GET /api/me можно крутить в цикле за наш счёт
+  const claim = await pool.query(
+    `update "user" set "collectedAt" = now()
+     where id = $1 and ("collectedAt" is null or "collectedAt" < now() - interval '4 minutes')`, [r.user_id])
+  if (!claim.rowCount) return 0
+
   // Better Auth сам обновит протухший токен
   const { accessToken } = await auth.api.getAccessToken({ body: { accountId: r.account_id, userId: r.user_id } })
   const me: Me = { x_id: r.x_id, handle: r.handle, country: r.country }
@@ -20,8 +26,12 @@ async function collectUser(r: Row): Promise<number> {
   if (!r.handle || (!r.since_id && !r.country && !r.country_manual)) {
     const profile = await getMe(accessToken)
     me.handle = profile.username
-    if (!r.country && !r.country_manual) me.country = parseCountry(profile.location)
-    await pool.query(`update "user" set handle = $1, country = $2 where id = $3`, [me.handle, me.country, r.user_id])
+    // страну мог выбрать сам юзер, пока мы ждали X — ручной выбор не трогаем
+    const { rows } = await pool.query(
+      `update "user" set handle = $1,
+         country = case when "countryManual" or country is not null then country else $2 end
+       where id = $3 returning country`, [me.handle, parseCountry(profile.location), r.user_id])
+    me.country = rows[0].country
   }
 
   const { tweets, users, newestId } = await getTweets(accessToken, r.x_id, r.since_id)

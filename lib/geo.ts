@@ -5,7 +5,8 @@ import world from 'world-atlas/countries-110m.json' with { type: 'json' }
 
 export const W = 960
 export const H = 500
-export const FOG: [number, number] = [-140, 5]
+// неизвестная страна — Антарктида
+export const FOG: [number, number] = [0, -78]
 
 export const projection = geoNaturalEarth1().fitSize([W, H], { type: 'Sphere' })
 export const path = geoPath(projection)

@@ -13,3 +13,7 @@ test('null, unknown code and country without 110m geometry → fog', () => {
   assert.equal(at('XX'), FOG)
   assert.equal(at('SG'), FOG)
 })
+
+test('unknown country lands in Antarctica', () => {
+  assert.ok(FOG[1] <= -70)
+})

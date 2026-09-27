@@ -31,7 +31,7 @@ export default function MePage() {
         <label>
           Your planes take off from{' '}
           <select value={me.country ?? ''} onChange={(e) => save(e.target.value)}>
-            <option value="">☁ the fog (unknown)</option>
+            <option value="">🐧 Antarctica (unknown)</option>
             {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
           </select>
         </label>

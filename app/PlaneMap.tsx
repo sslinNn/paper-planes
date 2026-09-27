@@ -50,7 +50,7 @@ export default function PlaneMap() {
     <svg viewBox={`0 0 ${W} ${H}`} className="map" role="img" aria-label="World map of X replies">
       <path d={path({ type: 'Sphere' })!} className="ocean" />
       {land.map((f, i) => <path key={i} d={path(f)!} className="land" />)}
-      <circle cx={fogX} cy={fogY} r={12} className="fog"><title>Unknown country</title></circle>
+      <circle cx={fogX} cy={fogY} r={12} className="fog"><title>Antarctica — unknown country</title></circle>
       {flights.map((p) => <FlightView key={p.key} p={p} />)}
     </svg>
   )

@@ -1,15 +1,20 @@
-import { geoCentroid, geoDistance, geoGraticule10, geoNaturalEarth1, geoPath } from 'd3-geo'
+import { geoCentroid, geoDistance, geoGraticule10, geoMercator, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
 import countries from 'i18n-iso-countries'
 import world from 'world-atlas/countries-110m.json' with { type: 'json' }
 
-export const W = 960
-export const H = 500
-// неизвестная страна — Антарктида
-export const FOG: [number, number] = [0, -78]
-
-export const projection = geoNaturalEarth1().fitSize([W, H], { type: 'Sphere' })
+// плоская карта во весь экран: Меркатор от 80° с.ш. до 72° ю.ш. (полоса Антарктиды внизу остаётся)
+export const W = 1000
+const NORTH = 80
+const SOUTH = -72
+export const projection = geoMercator().scale(W / (2 * Math.PI)).translate([W / 2, 0])
+const top = projection([0, NORTH])![1]
+projection.translate([W / 2, -top])
+export const H = projection([0, SOUTH])![1]
 export const path = geoPath(projection)
+
+// неизвестная страна — Антарктида, у кромки льда, чтобы было видно
+export const FOG: [number, number] = [0, -70]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const topo = world as any

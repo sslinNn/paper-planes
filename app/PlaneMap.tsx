@@ -1,27 +1,34 @@
 'use client'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { countryName } from '@/lib/country'
 import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
 import { countryOf, summarize, type PlaneRow, UNKNOWN } from '@/lib/sky'
+import { Close } from './icons'
 
 type Flight = PlaneRow & { key: number; echo?: boolean }
 type Focus = { iso: string; pinned: boolean } | null
+type Sky = ReturnType<typeof summarize>
 
 const MAX_FLIGHTS = 160
 const POLL_MS = 20_000
 const REPLAY_MS = 2_600
+// одна кривая на полёт: и самолётик, и проявка следа
+const EASE = '.45 0 .25 1'
 
 const fetchPlanes = (after: number): Promise<PlaneRow[]> =>
   fetch(`/api/planes?after=${after}`).then((r) => (r.ok ? r.json() : [])).catch(() => [])
 
 const landPaths = land.map((f) => ({ iso: isoOf(f), d: path(f) ?? '' }))
 
-export default function PlaneMap() {
+export default function PlaneMap({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<PlaneRow[]>([])
   const [flights, setFlights] = useState<Flight[]>([])
   const [focus, setFocus] = useState<Focus>(null)
+  const [panned, setPanned] = useState(false)
   const seq = useRef(0)
   const stage = useRef<HTMLDivElement>(null)
+  const svg = useRef<SVGSVGElement>(null)
+  const spread = useRef<HTMLDivElement>(null)
 
   // на телефоне карта шире экрана — начинаем с середины мира
   useEffect(() => {
@@ -53,7 +60,7 @@ export default function PlaneMap() {
       const fresh = take(await fetchPlanes(lastId))
       fresh.forEach((p, i) => timers.push(setTimeout(() => fly(p), (i * POLL_MS) / fresh.length)))
     }, POLL_MS)
-    // карта не должна стоять: старые самолётики перелетают снова
+    // карта не должна стоять: старые самолётики перелетают снова, эхом, без нового следа
     const replay = setInterval(() => rows.length && fly(rows[Math.floor(Math.random() * rows.length)], true), REPLAY_MS)
 
     return () => {
@@ -70,7 +77,10 @@ export default function PlaneMap() {
   }, [])
 
   const sky = useMemo(() => summarize(history), [history])
-  const busiest = useMemo(() => [...sky].filter(([, s]) => s.out > 0).sort((a, b) => b[1].out - a[1].out).slice(0, 12), [sky])
+  const busiest = useMemo(
+    () => [...sky].sort((a, b) => b[1].out + b[1].in - (a[1].out + a[1].in)).slice(0, 14),
+    [sky],
+  )
   const routes = useMemo(
     () => (focus ? history.filter((p) => countryOf(p.from_country) === focus.iso || countryOf(p.to_country) === focus.iso) : []),
     [history, focus],
@@ -81,53 +91,64 @@ export default function PlaneMap() {
 
   return (
     <>
-      <div className="stage" ref={stage} onPointerLeave={() => hover(null)}>
-        <svg viewBox={`0 0 ${W} ${H}`} className={`map${focus ? ' focused' : ''}`} role="img" aria-label="World map of replies on X flying as paper planes">
-          <defs>
-            <pattern id="halftone" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
-              <circle cx="2.5" cy="2.5" r=".95" fill="var(--blue)" />
-            </pattern>
-            <pattern id="halftone-dense" width="3.6" height="3.6" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
-              <circle cx="1.8" cy="1.8" r="1.05" fill="var(--blue)" />
-            </pattern>
-          </defs>
+      <div className="spread" ref={spread} onPointerLeave={() => hover(null)}>
+        <div className="stage" ref={stage} onScroll={() => setPanned(true)}>
+          <svg
+            ref={svg}
+            viewBox={`0 0 ${W} ${H.toFixed(1)}`}
+            preserveAspectRatio="xMidYMax slice"
+            className={`map${focus ? ' focused' : ''}`}
+            role="img"
+            aria-label="World map of replies on X flying as paper planes"
+          >
+            <defs>
+              <pattern id="halftone" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
+                <circle cx="2.5" cy="2.5" r=".95" fill="var(--blue)" />
+              </pattern>
+              <pattern id="halftone-dense" width="3.6" height="3.6" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
+                <circle cx="1.8" cy="1.8" r="1.05" fill="var(--blue)" />
+              </pattern>
+            </defs>
 
-          <path d={path(graticule) ?? ''} className="graticule" />
-          <path d={path({ type: 'Sphere' }) ?? ''} className="sphere" />
+            <path d={path(graticule) ?? ''} className="graticule" />
 
-          <g>
-            {landPaths.map(({ iso, d }, i) => {
-              const code = iso ?? ''
-              const busy = !!iso && (sky.get(iso)?.out ?? 0) > 0
-              return (
-                <path
-                  key={i}
-                  d={d}
-                  className={`land${busy ? ' busy' : ''}${focus && focus.iso === code ? ' on' : ''}`}
-                  onPointerEnter={(e) => iso && e.pointerType === 'mouse' && hover(iso)}
-                  onClick={() => iso && pin(iso)}
-                />
-              )
-            })}
-          </g>
-          {/* второй прогон краски, чуть мимо приводки */}
-          <g className="ghost" transform="translate(1.6 1.1)">
-            {landPaths.map(({ d }, i) => <path key={i} d={d} />)}
-          </g>
+            <g>
+              {landPaths.map(({ iso, d }, i) => {
+                const busy = !!iso && (sky.get(iso)?.out ?? 0) > 0
+                return (
+                  <path
+                    key={i}
+                    d={d}
+                    className={`land${busy ? ' busy' : ''}${focus && focus.iso === iso ? ' on' : ''}`}
+                    onPointerEnter={(e) => iso && e.pointerType === 'mouse' && hover(iso)}
+                    onClick={() => iso && pin(iso)}
+                  />
+                )
+              })}
+            </g>
+            {/* второй прогон краски, чуть мимо приводки */}
+            <g className="ghost" transform="translate(1.6 1.1)">
+              {landPaths.map(({ d }, i) => <path key={i} d={d} />)}
+            </g>
 
-          <g className="routes">
-            {routes.map((p) => {
-              const d = arc(p)
-              return d ? <path key={p.id} d={d} /> : null
-            })}
-          </g>
+            <g className="routes">
+              {routes.map((p) => {
+                const d = arc(p)
+                return d ? <path key={p.id} d={d} /> : null
+              })}
+            </g>
 
-          {flights.map((f) => (
-            <FlightView key={f.key} f={f} hit={!!focus && (countryOf(f.from_country) === focus.iso || countryOf(f.to_country) === focus.iso)} />
-          ))}
-        </svg>
+            {flights.map((f) => (
+              <FlightView key={f.key} f={f} hit={!!focus && (countryOf(f.from_country) === focus.iso || countryOf(f.to_country) === focus.iso)} />
+            ))}
+          </svg>
+        </div>
 
-        {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} onClose={() => setFocus(null)} />}
+        <header className="overlay">{children}</header>
+        <p className="counter"><b>{history.length}</b> recent flights</p>
+        {!panned && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
+
+        {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} svg={svg} spread={spread} onClose={() => setFocus(null)} />}
       </div>
 
       <section className="skies" aria-labelledby="skies-title">
@@ -143,7 +164,7 @@ export default function PlaneMap() {
                   onFocus={() => hover(iso)}
                   onClick={() => pin(iso)}
                 >
-                  {countryName(iso)} <b>{s.out}</b>
+                  {countryName(iso)} <b>{s.out + s.in}</b>
                 </button>
               </li>
             ))}
@@ -151,11 +172,8 @@ export default function PlaneMap() {
         ) : (
           <p className="empty">The sky is quiet. Planes land here as soon as someone replies.</p>
         )}
+        <p className="colophon">Hover or tap a country to meet who’s posting from there.</p>
       </section>
-      <p className="colophon" aria-live="polite">
-        <span className="counter">{history.length} recent flights</span>
-        <span>Tap a country to meet who’s posting from there.</span>
-      </p>
     </>
   )
 }
@@ -185,12 +203,27 @@ function FlightView({ f, hit }: { f: Flight; hit: boolean }) {
   const mask = `reveal-${f.key}`
   return (
     <g className={cls} style={style}>
-      <mask id={mask} maskUnits="userSpaceOnUse">
-        <path d={d} pathLength={1} className="reveal" />
-      </mask>
-      <path d={d} className="trail" mask={`url(#${mask})`} />
+      {!f.echo && (
+        <>
+          <mask id={mask} maskUnits="userSpaceOnUse">
+            <path d={d} pathLength={1} className="reveal" />
+          </mask>
+          <path d={d} className="trail" mask={`url(#${mask})`} />
+        </>
+      )}
       <g className="plane">
-        <animateMotion ref={motion} dur={`${dur.toFixed(2)}s`} begin="indefinite" fill="freeze" rotate="auto" path={d} />
+        <animateMotion
+          ref={motion}
+          dur={`${dur.toFixed(2)}s`}
+          begin="indefinite"
+          fill="freeze"
+          rotate="auto"
+          path={d}
+          keyPoints="0;1"
+          keyTimes="0;1"
+          calcMode="spline"
+          keySplines={EASE}
+        />
         <g className="dart">
           <path className="wing" d="M13 0 L-10 -9 L-4 0 Z" />
           <path className="wing" d="M13 0 L-4 0 L-9 6 Z" />
@@ -202,18 +235,35 @@ function FlightView({ f, hit }: { f: Flight; hit: boolean }) {
   )
 }
 
-function CountryCard({ iso, sky, pinned, onClose }: { iso: string; sky: ReturnType<typeof summarize>; pinned: boolean; onClose: () => void }) {
+function CountryCard({ iso, sky, pinned, svg, spread, onClose }: {
+  iso: string; sky: Sky; pinned: boolean; onClose: () => void
+  svg: React.RefObject<SVGSVGElement | null>; spread: React.RefObject<HTMLDivElement | null>
+}) {
+  const card = useRef<HTMLElement>(null)
   const s = sky.get(iso)
-  const [x, y] = projection(at(iso === UNKNOWN ? null : iso))!
-  // карточка встаёт с той стороны страны, где больше места
-  const left = x / W > 0.55 ? `calc(${(x / W) * 100}% - min(330px, 86vw) - 24px)` : `calc(${(x / W) * 100}% + 24px)`
-  const top = `clamp(0px, calc(${(y / H) * 100}% - 90px), calc(100% - 320px))`
   const out = s?.out ?? 0
   const people = s?.people ?? []
 
+  // карточка встаёт рядом со страной на экране, с той стороны, где больше места
+  useLayoutEffect(() => {
+    const el = svg.current
+    const box = spread.current?.getBoundingClientRect()
+    const m = el?.getScreenCTM()
+    if (!el || !box || !m || !card.current) return
+    const [x, y] = projection(at(iso === UNKNOWN ? null : iso))!
+    const pt = new DOMPoint(x, y).matrixTransform(m)
+    const cx = pt.x - box.left
+    const cy = pt.y - box.top
+    const cardW = Math.min(340, box.width * 0.86)
+    const left = cx > box.width * 0.55 ? cx - cardW - 28 : cx + 28
+    card.current.style.left = `${Math.max(12, Math.min(left, box.width - cardW - 12))}px`
+    card.current.style.top = `${Math.max(12, Math.min(cy - 90, box.height - 400))}px`
+    card.current.style.visibility = 'visible'
+  }, [iso, svg, spread])
+
   return (
-    <aside className="card" style={{ left, top }} aria-live="polite">
-      {pinned && <button className="close" onClick={onClose} aria-label="Close">×</button>}
+    <aside className="card" ref={card} style={{ visibility: 'hidden' }} aria-live="polite">
+      {pinned && <button className="close" onClick={onClose} aria-label="Close"><Close /></button>}
       <h2>{countryName(iso)}</h2>
       {iso === UNKNOWN && <p className="note">Planes from places we couldn’t pin down land here.</p>}
       <div className="tally">
@@ -224,10 +274,10 @@ function CountryCard({ iso, sky, pinned, onClose }: { iso: string; sky: ReturnTy
         <>
           <h3>Posting from here</h3>
           <ul className="people">
-            {people.slice(0, 6).map(([h]) => (
+            {people.slice(0, 5).map(([h]) => (
               <li key={h}><a href={`https://x.com/${h}`} target="_blank" rel="noopener noreferrer">@{h}</a></li>
             ))}
-            {people.length > 6 && <li className="more">+{people.length - 6} more</li>}
+            {people.length > 5 && <li className="more">+{people.length - 5} more</li>}
           </ul>
           <h3>Flying to</h3>
           <ul className="dests">

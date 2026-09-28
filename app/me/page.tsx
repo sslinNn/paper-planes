@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { countryNames } from '@/lib/country'
+import { Arrow } from '../icons'
 
 type Me = { handle: string; country: string | null }
 const options = countryNames()
@@ -42,7 +43,7 @@ export default function MePage() {
         </select>
         <p className="status" role="status">{status}</p>
       </div>
-      <p className="lede"><Link className="tag" href="/">See your planes on the map →</Link></p>
+      <p className="lede"><Link className="tag" href="/">See your planes on the map <Arrow /></Link></p>
     </main>
   )
 }

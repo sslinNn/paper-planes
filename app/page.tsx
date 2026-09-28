@@ -6,10 +6,8 @@ export default function Home() {
     <main>
       <PlaneMap>
         <h1 className="title" data-ink="Paper Planes">Paper Planes</h1>
-        <div className="lede">
-          <p>Every reply on X becomes a <strong>paper plane</strong>, flying from one country to another. Log in and yours take off.</p>
-          <LoginButton />
-        </div>
+        <p className="lede">Every reply on X becomes a <strong>paper plane</strong>, flying from one country to another. Log in and yours take off.</p>
+        <LoginButton />
       </PlaneMap>
     </main>
   )

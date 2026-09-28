@@ -111,12 +111,17 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="spread" ref={spread}>
+        {/* шапка листа: над картой, а не поверх неё — карта целиком видна всегда */}
+        <header className="masthead">
+          {children}
+          <p className="counter"><b>{history.length}</b> recent flights</p>
+        </header>
         <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>
           {/* тап по океану убирает закреплённую карточку */}
           <svg
             ref={svg}
             viewBox={`0 0 ${W} ${H.toFixed(1)}`}
-            preserveAspectRatio="xMidYMax slice"
+            preserveAspectRatio="xMidYMid meet"
             className={`map${focus ? ' focused' : ''}`}
             role="img"
             aria-label="World map of replies on X flying as paper planes"
@@ -166,8 +171,6 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           </svg>
         </div>
 
-        <header className="overlay">{children}</header>
-        <p className="counter"><b>{history.length}</b> recent flights</p>
         {!panned && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
 
         {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} svg={svg} spread={spread} onClose={() => setFocus(null)} onEnter={keep} onLeave={() => hover(null)} />}
@@ -281,7 +284,9 @@ function CountryCard({ iso, sky, pinned, svg, spread, onClose, onEnter, onLeave 
     const cardW = Math.min(340, box.width * 0.86)
     const left = cx > box.width * 0.55 ? cx - cardW - 28 : cx + 28
     card.current.style.left = `${Math.max(12, Math.min(left, box.width - cardW - 12))}px`
-    card.current.style.top = `${Math.max(12, Math.min(cy - 90, box.height - 400))}px`
+    // не заезжаем на шапку листа
+    const floor = (el.parentElement?.offsetTop ?? 0) + 12
+    card.current.style.top = `${Math.max(floor, Math.min(cy - 90, box.height - 400))}px`
     card.current.style.visibility = 'visible'
   }, [iso, svg, spread])
 

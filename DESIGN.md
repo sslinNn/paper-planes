@@ -10,7 +10,7 @@ colors:
 typography:
   display:
     fontFamily: "Big Shoulders, sans-serif"
-    fontSize: "clamp(3rem, calc(var(--map-w) * .062), 7rem)"
+    fontSize: "clamp(2.3rem, 4.4vw, 4.4rem)"
     fontWeight: 900
     lineHeight: 0.8
     letterSpacing: "-0.02em"
@@ -128,7 +128,7 @@ A newsprint sheet printed in two riso inks, with soot for reading text.
 **Character:** A tall condensed poster grotesk set heavy and tight, like wood type pulled on a zine cover, against a sturdy plain grotesk that just reads.
 
 ### Hierarchy
-- **Display** (900, clamp(3rem, map width × .062, 7rem), line-height .8, -.02em, uppercase, no wrap): one compact headline line in the top-left corner, never a band over the map. Blue, with the pink under-pass. On narrow phones it is 13vw; on `/me` it wraps at min(12vw, 10rem) and keeps its own case.
+- **Display** (900, clamp(2.3rem, 4.4vw, 4.4rem), line-height .8, -.02em, uppercase, no wrap): one line in the masthead strip above the map. Blue, with the pink under-pass; on `/me` it wraps at min(12vw, 10rem) and keeps its own case.
 - **Headline** (900, clamp(2rem, 3.2vw, 2.9rem), .85, uppercase): the country name on the card. Section heads below the fold use the same face at clamp(1.6rem, 3vw, 2.4rem)/.9.
 - **Title** (800, clamp(1.5rem, 2.2vw, 2rem), 1.05): X handles in the card, set large as the people are the content.
 - **Numerals** (Big Shoulders 900 at 1.3-1.5em, tabular): counts in the counter, chips and card tally. The card tally scales with volume, from 2rem up to 4.4rem on a log curve.
@@ -137,7 +137,7 @@ A newsprint sheet printed in two riso inks, with soot for reading text.
 - **Label** (Archivo 600-800, .8-.85rem): notes, list captions inside the card ("Posting from here"), colophon.
 
 ### Named Rules
-**The Map Comes First Rule.** The display headline is one compact line in the top-left corner (clamp(3rem, map width × .062, 7rem)); it never grows into a band that covers the map. The user rejected the full-measure band because it hid half the world.
+**The Map Comes First Rule.** Nothing is printed over the map. Title, lede, counter and the login tag live in a paper masthead strip above it; the map fills the rest of the viewport with `meet`, so the whole world (Antarctica included) is always visible. The user rejected both the full-measure band and the corner overlay because they hid the Americas and Greenland.
 
 **The Volume Is Scale Rule.** Quantity is shown by numeral size, not by a chart or badge.
 

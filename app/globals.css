@@ -45,8 +45,8 @@ html { scrollbar-color: var(--blue) var(--paper); }
   margin: 0;
   font-family: var(--font-display), sans-serif;
   font-weight: 900;
-  /* одна полоса во всю ширину листа */
-  font-size: min(17.4vw, 15.6rem);
+  /* одна полоса во всю ширину карты */
+  font-size: var(--title);
   line-height: .8;
   white-space: nowrap;
   letter-spacing: -.02em;
@@ -66,6 +66,7 @@ html { scrollbar-color: var(--blue) var(--paper); }
   pointer-events: none;
 }
 .lede {
+  margin-top: 14px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -110,14 +111,18 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .spread { position: relative; height: 100svh; min-height: 540px; overflow: hidden; border-bottom: 2px solid var(--blue); }
 .stage { position: absolute; inset: 0; }
 .map { display: block; width: 100%; height: 100%; touch-action: pan-x pan-y; }
+:root { --map-w: 100vw; --pad: clamp(14px, 2.2vw, 32px); --title: calc(var(--map-w) * .172); }
+/* заголовок, подпись и счётчик печатаются сверху, над Арктикой: низ с Антарктидой остаётся открытым */
 .overlay {
-  position: absolute; inset: 0; z-index: 5;
-  display: flex; flex-direction: column; justify-content: space-between;
-  padding: clamp(14px, 2.2vw, 32px);
+  position: absolute; top: 0; bottom: 0; left: 50%; z-index: 5;
+  width: var(--map-w); transform: translateX(-50%);
+  display: flex; flex-direction: column; justify-content: flex-start;
+  padding: var(--pad);
   pointer-events: none;
 }
 .overlay .tag { pointer-events: auto; }
-.counter { position: absolute; right: clamp(14px, 2.2vw, 32px); bottom: clamp(14px, 2.2vw, 32px); z-index: 5; pointer-events: none; }
+.counter { position: absolute; z-index: 5; pointer-events: none;
+  top: calc(var(--pad) + var(--title) * .8 + 14px); right: calc((100vw - var(--map-w)) / 2 + var(--pad)); }
 .pan-hint { display: none; }
 .graticule { fill: none; stroke: var(--blue); stroke-width: .5; stroke-dasharray: 1 3; opacity: .45; }
 .land { fill: url(#halftone); stroke: var(--blue); stroke-width: .55; stroke-linejoin: round; cursor: pointer; transition: fill 160ms var(--ease-out); }
@@ -227,11 +232,12 @@ html { scrollbar-color: var(--blue) var(--paper); }
 @media (min-aspect-ratio: 17/10) {
   /* очень широкий экран: карта во всю высоту, по бокам — поля листа, мир не режется */
   .map { width: calc(max(100svh, 540px) * 1.468); margin-inline: auto; }
+  :root { --map-w: calc(max(100svh, 540px) * 1.468); }
 }
 @media (max-width: 640px) {
-  .title { font-size: 16.6vw; }
+  :root { --title: 16.6vw; }
   .lede p { font-size: .95rem; }
-  .counter { bottom: auto; top: calc(16.6vw * .8 + 30px); }
+  .counter { top: auto; bottom: var(--pad); right: var(--pad); }
   .card { left: 50% !important; top: auto !important; bottom: 8px; transform: translateX(-50%); position: fixed; width: calc(100vw - 24px); animation: none; }
 }
 

@@ -12,6 +12,7 @@ type Sky = ReturnType<typeof summarize>
 const MAX_FLIGHTS = 160
 const POLL_MS = 20_000
 const REPLAY_MS = 2_600
+const TRAIL_MS = 60_000
 // одна кривая на полёт: и самолётик, и проявка следа
 const EASE = '.45 0 .25 1'
 
@@ -43,8 +44,14 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     let rows: PlaneRow[] = []
     let lastId = 0
     const timers: ReturnType<typeof setTimeout>[] = []
-    const fly = (p: PlaneRow, echo = false) =>
+    // один живой след на маршрут: повторы и дубли летят без следа и штампа, иначе розовый копится до красного
+    const inked = new Map<string, number>()
+    const fly = (p: PlaneRow, replay = false) => {
+      const route = `${p.from_country}>${p.to_country}`
+      const echo = replay || Date.now() - (inked.get(route) ?? 0) < TRAIL_MS
+      if (!echo) inked.set(route, Date.now())
       setFlights((f) => [...f.slice(-(MAX_FLIGHTS - 1)), { ...p, key: ++seq.current, echo }])
+    }
     const take = (planes: PlaneRow[]) => {
       if (planes.length) lastId = Math.max(lastId, planes[0].id)
       rows = [...planes, ...rows].slice(0, 200)
@@ -92,7 +99,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="spread" ref={spread} onPointerLeave={() => hover(null)}>
-        <div className="stage" ref={stage} onScroll={() => setPanned(true)}>
+        <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>
           <svg
             ref={svg}
             viewBox={`0 0 ${W} ${H.toFixed(1)}`}
@@ -230,7 +237,7 @@ function FlightView({ f, hit }: { f: Flight; hit: boolean }) {
           <path className="fold" d="M13 0 L-4 0 L-9 6 Z" />
         </g>
       </g>
-      <circle className="stamp" cx={bx} cy={by} r={4} />
+      {!f.echo && <circle className="stamp" cx={bx} cy={by} r={4} />}
     </g>
   )
 }

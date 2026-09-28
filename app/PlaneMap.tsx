@@ -10,7 +10,6 @@ import Live from './Live'
 type Point = [number, number]
 // a, b — откуда и куда летит, считаются один раз при взлёте
 type Flight = PlaneRow & { key: number; echo?: boolean; count: number; a: Point; b: Point }
-type Focus = { iso: string; pinned: boolean } | null
 type Sky = ReturnType<typeof summarize>
 type Local = { handle: string; country: string; image: string | null; patron: boolean; spot: Point | null }
 type Homes = Map<string, Local>
@@ -45,7 +44,8 @@ const landPaths = land.map((f) => ({ iso: isoOf(f), d: path(f) ?? '' }))
 export default function PlaneMap({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<PlaneRow[]>([])
   const [flights, setFlights] = useState<Flight[]>([])
-  const [focus, setFocus] = useState<Focus>(null)
+  // страна с открытой карточкой — только по клику/тапу, наведение ничего не открывает
+  const [focus, setFocus] = useState<string | null>(null)
   const [panned, setPanned] = useState(false)
   const [me, setMe] = useState<string | null>(null)
   const [locals, setLocals] = useState<Local[]>([])
@@ -232,23 +232,14 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   )
   const log = useMemo(() => flightLog(history, (p) => distance(...endsOf(p, homes)) * EARTH_KM), [history, homes])
   const routes = useMemo(
-    () => (focus ? history.filter((p) => countryOf(p.from_country) === focus.iso || countryOf(p.to_country) === focus.iso) : []),
+    () => (focus ? history.filter((p) => countryOf(p.from_country) === focus || countryOf(p.to_country) === focus) : []),
     [history, focus],
   )
 
-  // мышь: карточка живёт только пока курсор над страной (или над самой карточкой).
-  // уход — с короткой задержкой, чтобы успеть довести курсор до ссылок в карточке
-  const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const hover = useCallback((iso: string | null) => {
-    clearTimeout(leaveTimer.current)
-    if (iso) setFocus((f) => (f?.pinned ? f : { iso, pinned: false }))
-    else leaveTimer.current = setTimeout(() => setFocus((f) => (f?.pinned ? f : null)), 160)
-  }, [])
-  const keep = useCallback(() => clearTimeout(leaveTimer.current), [])
-  // клик, тап и Enter закрепляют карточку, повтор — убирает. pointerType у click не смотрим:
+  // клик, тап и Enter открывают карточку, повтор — закрывает. pointerType у click не смотрим:
   // iOS Safari отдаёт у тапа 'mouse', и тап по стране там молча ничего не делал
   const pin = useCallback((iso: string) => {
-    setFocus((f) => (f?.pinned && f.iso === iso ? null : { iso, pinned: true }))
+    setFocus((f) => (f === iso ? null : iso))
   }, [])
 
   const stopPlacing = (note: string | null) => {
@@ -329,9 +320,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                   <path
                     key={i}
                     d={d}
-                    className={`land${busy ? ' busy' : ''}${focus && focus.iso === iso ? ' on' : ''}${placing && iso === myCountry ? ' home' : ''}`}
-                    onPointerEnter={(e) => iso && !placing && e.pointerType === 'mouse' && hover(iso)}
-                    onPointerLeave={(e) => e.pointerType === 'mouse' && hover(null)}
+                    className={`land${busy ? ' busy' : ''}${focus === iso ? ' on' : ''}${placing && iso === myCountry ? ' home' : ''}`}
                     onClick={(e) => (placing ? place(iso, e) : iso ? pin(iso) : setFocus(null))}
                   />
                 )
@@ -356,7 +345,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                 key={f.key}
                 f={f}
                 me={me}
-                hit={!!focus && (countryOf(f.from_country) === focus.iso || countryOf(f.to_country) === focus.iso)}
+                hit={!!focus && (countryOf(f.from_country) === focus || countryOf(f.to_country) === focus)}
               />
             ))}
           </svg>
@@ -371,7 +360,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           </p>
         )}
 
-        {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} svg={svg} spread={spread} onClose={() => setFocus(null)} onEnter={keep} onLeave={() => hover(null)} />}
+        {focus && <CountryCard iso={focus} sky={sky} svg={svg} spread={spread} onClose={() => setFocus(null)} />}
       </div>
 
       <section className="skies" aria-labelledby="skies-title">
@@ -382,11 +371,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               <li key={iso}>
                 <button
                   type="button"
-                  aria-pressed={focus?.pinned && focus.iso === iso ? true : false}
-                  onPointerEnter={(e) => e.pointerType === 'mouse' && hover(iso)}
-                  onPointerLeave={(e) => e.pointerType === 'mouse' && hover(null)}
-                  onFocus={() => hover(iso)}
-                  onBlur={() => hover(null)}
+                  aria-pressed={focus === iso}
                   onClick={() => pin(iso)}
                 >
                   {countryName(iso)} <b>{s.out + s.in}</b>
@@ -397,7 +382,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
         ) : (
           <p className="empty">The sky is quiet. Planes land here as soon as someone replies.</p>
         )}
-        <p className="colophon">Hover or tap a country to meet who’s posting from there.</p>
+        <p className="colophon">Tap a country to meet who’s posting from there.</p>
 
         {log.pilot && (
           <>
@@ -508,11 +493,11 @@ function arc(a: Point, b: Point) {
 const avatarOf = (url?: string | null) => (url?.startsWith('https://pbs.twimg.com/') ? url : null)
 
 function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null }) {
-  const plane = useRef<SVGAnimateMotionElement>(null)
-  const pilot = useRef<SVGAnimateMotionElement>(null)
+  const root = useRef<SVGGElement>(null)
+  // полёт и проявление/угасание — на одних SMIL-часах. Раньше прозрачность жила в CSS-анимации:
+  // в фоновой вкладке часы расходились, и по возвращении самолётик висел видимым в точке прилёта
   useEffect(() => {
-    plane.current?.beginElement()
-    pilot.current?.beginElement()
+    root.current?.querySelectorAll<SVGAnimationElement>('animate, animateMotion').forEach((a) => a.beginElement())
   }, [])
 
   const [bx, by] = projection(f.b)!
@@ -527,13 +512,16 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
   const banner = !f.echo || mine || forMe
   const avatar = avatarOf(f.from_avatar)
   const motion = { dur: `${dur.toFixed(2)}s`, begin: 'indefinite', fill: 'freeze' as const, path: d ?? '', keyPoints: '0;1', keyTimes: '0;1', calcMode: 'spline' as const, keySplines: EASE }
+  const fade = (peak: number) => (
+    <animate attributeName="opacity" values={`0;${peak};${peak};0`} keyTimes="0;.06;.94;1" dur={motion.dur} begin="indefinite" fill="freeze" />
+  )
 
   // одна страна — самолётик не летит, просто штамп на месте
   if (!d) return <circle className={cls + ' stamp'} cx={bx} cy={by} r={4} style={{ '--dur': '0s', '--ink': userInk(f.from_handle) } as React.CSSProperties} />
 
   const mask = `reveal-${f.key}`
   return (
-    <g className={cls} style={style}>
+    <g className={cls} style={style} ref={root}>
       {!f.echo && (
         <>
           <mask id={mask} maskUnits="userSpaceOnUse">
@@ -542,15 +530,17 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
           <path d={d} className="trail" mask={`url(#${mask})`} />
         </>
       )}
-      <g className="plane">
-        <animateMotion ref={plane} rotate="auto" {...motion} />
+      <g className="plane" opacity={0}>
+        <animateMotion rotate="auto" {...motion} />
+        {fade(1)}
         <g className="dart">
           <Airframe model={f.from_patron && isPlaneModel(f.from_plane) ? f.from_plane : 'dart'} />
         </g>
       </g>
       {/* пилот и ленточка не поворачиваются вместе с самолётиком — лицо и текст всегда ровно */}
-      <g className="pilot">
-        <animateMotion ref={pilot} rotate="0" {...motion} />
+      <g className="pilot" opacity={0}>
+        <animateMotion rotate="0" {...motion} />
+        {fade(f.echo ? .85 : 1)}
         {avatar ? (
           <image className="face" href={avatar} x={-5} y={-19} width={10} height={10} clipPath="url(#round)" />
         ) : (
@@ -637,8 +627,8 @@ function Locals({ people, me }: { people: Local[]; me: string | null }) {
   )
 }
 
-function CountryCard({ iso, sky, pinned, svg, spread, onClose, onEnter, onLeave }: {
-  iso: string; sky: Sky; pinned: boolean; onClose: () => void; onEnter: () => void; onLeave: () => void
+function CountryCard({ iso, sky, svg, spread, onClose }: {
+  iso: string; sky: Sky; onClose: () => void
   svg: React.RefObject<SVGSVGElement | null>; spread: React.RefObject<HTMLDivElement | null>
 }) {
   const card = useRef<HTMLElement>(null)
@@ -667,8 +657,8 @@ function CountryCard({ iso, sky, pinned, svg, spread, onClose, onEnter, onLeave 
   }, [iso, svg, spread])
 
   return (
-    <aside className="card" ref={card} style={{ visibility: 'hidden' }} aria-live="polite" onPointerEnter={onEnter} onPointerLeave={(e) => e.pointerType === 'mouse' && onLeave()}>
-      {pinned && <button className="close" onClick={onClose} aria-label="Close"><Close /></button>}
+    <aside className="card" ref={card} style={{ visibility: 'hidden' }} aria-live="polite">
+      <button className="close" onClick={onClose} aria-label="Close"><Close /></button>
       <h2>{countryName(iso)}</h2>
       <p className="tally"><b>{out}</b> out · <b>{s?.in ?? 0}</b> in</p>
       {iso === UNKNOWN && <p className="note">Where planes from unknown places land.</p>}

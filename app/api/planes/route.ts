@@ -4,7 +4,8 @@ import { pool } from '@/lib/db'
 
 export async function GET(req: Request) {
   after(collectIfDue)
-  const since = Number(new URL(req.url).searchParams.get('after')) || 0
+  // id — int4: мусор и числа больше 2^31 не должны ронять запрос
+  const since = Math.min(Math.max(Math.trunc(Number(new URL(req.url).searchParams.get('after'))) || 0, 0), 2 ** 31 - 1)
   const { rows } = await pool.query(
     `select p.id, p.from_handle, p.to_handle, p.from_country, p.to_country, u.image as from_avatar, p.created_at,
             u.plane as from_plane, exists (select 1 from patrons pt where pt.user_id = u.id) as from_patron

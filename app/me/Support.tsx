@@ -26,7 +26,11 @@ export default function Support({ patronSince, plane, open, onPlane }: {
     if (j?.url) location.href = j.url
     else {
       setBusy(false)
-      setStatus(r?.status === 400 ? 'Check the email and amount.' : 'The payment page didn’t open. Try again in a minute.')
+      setStatus(
+        r?.status === 400 ? 'Check the email and amount (at least 5 $ / 5 € / 100 ₽).'
+          : r?.status === 422 ? 'lava.top didn’t accept this email. Try a different one.'
+          : 'The payment page didn’t open. Try again in a minute.',
+      )
     }
   }
 

@@ -34,6 +34,8 @@ export async function POST(req: Request) {
   const j = await r.json().catch(() => null)
   if (!r.ok || !j?.paymentUrl) {
     console.error('lava invoice', r.status, j)
+    // lava не принимает некоторые email — например, email самого продавца: просим другой
+    if (r.status === 400 && /email/i.test(String(j?.error))) return new Response('email rejected', { status: 422 })
     return new Response('payment provider error', { status: 502 })
   }
   return Response.json({ url: j.paymentUrl })

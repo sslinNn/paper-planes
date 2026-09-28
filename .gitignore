@@ -43,3 +43,6 @@ next-env.d.ts
 # impeccable scratch
 .impeccable/review/
 .impeccable/decision/
+
+# promo renders
+*.mp4

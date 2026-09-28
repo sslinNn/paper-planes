@@ -26,12 +26,13 @@ export function resolveCountries(
   const newRecipients: Recipient[] = []
   for (const id of ids) {
     if (registered.has(id)) countryOf.set(id, registered.get(id)!)
-    else if (cached.has(id)) countryOf.set(id, cached.get(id)!)
+    else if (cached.get(id)) countryOf.set(id, cached.get(id)!)
     else {
+      // не видели или страна раньше не определилась (юзер мог дописать локацию) — пробуем снова
       const u = byId.get(id)
       const country = parseCountry(u?.location)
       countryOf.set(id, country)
-      if (u) newRecipients.push({ x_id: id, handle: u.username, country })
+      if (u && (country || !cached.has(id))) newRecipients.push({ x_id: id, handle: u.username, country })
     }
   }
   return { countryOf, newRecipients }

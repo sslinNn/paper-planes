@@ -206,7 +206,9 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       return true
     }
     const take = (planes: PlaneRow[]) => {
-      if (planes.length) lastId = Math.max(lastId, planes[0].id)
+      // опрос без новостей не должен перерисовывать всю карту
+      if (!planes.length) return planes
+      lastId = Math.max(lastId, planes[0].id)
       rows = [...planes, ...rows].slice(0, 200)
       setHistory(rows)
       return planes
@@ -370,9 +372,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               })}
             </g>
             {/* второй прогон краски, чуть мимо приводки */}
-            <g className="ghost" transform="translate(1.6 1.1)">
-              {landPaths.map(({ d }, i) => <path key={i} d={d} />)}
-            </g>
+            {GHOST}
 
             <Locals people={people} me={me} />
 

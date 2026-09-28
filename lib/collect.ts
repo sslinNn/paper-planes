@@ -57,7 +57,7 @@ async function collectUser(r: Row): Promise<number> {
     await pool.query(
       `insert into recipients (x_id, handle, country)
        select x_id, handle, country from json_populate_recordset(null::recipients, $1::json)
-       on conflict (x_id) do nothing`, [JSON.stringify(newRecipients)])
+       on conflict (x_id) do update set country = excluded.country, handle = excluded.handle`, [JSON.stringify(newRecipients)])
 
     const planes = toPlanes(me, tweets, users, countryOf)
     const res = await pool.query(

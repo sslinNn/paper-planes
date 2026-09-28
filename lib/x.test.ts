@@ -38,6 +38,20 @@ test('getTweets: no new tweets keeps old since_id', async () => {
   assert.equal(r.newestId, '5')
 })
 
+test('getTweets follows next_token, merges pages, newest id from the first page', async () => {
+  const seen: string[] = []
+  const pages = [
+    { data: [{ id: '20' }], includes: { users: [{ id: '2', username: 'a' }] }, meta: { newest_id: '20', next_token: 'n1' } },
+    { data: [{ id: '10' }], includes: { users: [{ id: '2', username: 'a' }, { id: '3', username: 'b' }] }, meta: { newest_id: '10' } },
+  ]
+  const f = ((url: string) => (seen.push(String(url)), Promise.resolve(new Response(JSON.stringify(pages[seen.length - 1]))))) as unknown as typeof fetch
+  const r = await getTweets('tok', '1', '5', f)
+  assert.equal(new URL(seen[1]).searchParams.get('pagination_token'), 'n1')
+  assert.equal(r.tweets.length, 2)
+  assert.equal(r.users.length, 2)
+  assert.equal(r.newestId, '20')
+})
+
 test('429 → RateLimited', async () => {
   await assert.rejects(() => getTweets('tok', '1', null, fake(429, {})), RateLimited)
 })

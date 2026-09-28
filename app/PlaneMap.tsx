@@ -5,6 +5,7 @@ import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/
 import { countryOf, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import { Close } from './icons'
+import Live from './Live'
 
 type Flight = PlaneRow & { key: number; echo?: boolean; count: number }
 type Focus = { iso: string; pinned: boolean } | null
@@ -276,7 +277,6 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
 
 // табло прилётов: бегущая строка под картой, последние реплаи — живой поток настоящих людей
 function Arrivals({ planes }: { planes: PlaneRow[] }) {
-  if (!planes.length) return null
   const items = planes.map((p) => (
     <li key={p.id} style={{ '--ink': userInk(p.from_handle) } as React.CSSProperties}>
       <svg className="icon dart-icon" viewBox="-11 -10 25 17" aria-hidden="true">
@@ -291,11 +291,14 @@ function Arrivals({ planes }: { planes: PlaneRow[] }) {
   return (
     <section className="arrivals" aria-label="Latest arrivals">
       <h2>Arrivals</h2>
-      <div className="ticker">
-        {/* лента дублируется, чтобы бежать по кругу без шва */}
-        <ul>{items}</ul>
-        <ul aria-hidden="true">{items}</ul>
-      </div>
+      {planes.length > 0 && (
+        <div className="ticker">
+          {/* лента дублируется, чтобы бежать по кругу без шва */}
+          <ul>{items}</ul>
+          <ul aria-hidden="true">{items}</ul>
+        </div>
+      )}
+      <Live />
     </section>
   )
 }

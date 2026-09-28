@@ -36,3 +36,11 @@ create table if not exists patrons (
 create index if not exists patrons_user on patrons (user_id);
 -- модель самолётика донатера: dart | glider | swallow | crane
 alter table "user" add column if not exists plane text;
+
+-- живой счётчик «онлайн / за сегодня»: ряд на посетителя в день, heartbeat двигает last_seen
+create table if not exists visitors (
+  day date not null default current_date,
+  id uuid not null,
+  last_seen timestamptz not null default now(),
+  primary key (day, id)
+);

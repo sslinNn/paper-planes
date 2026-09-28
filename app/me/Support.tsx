@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import posthog from 'posthog-js'
 import { PLANE_MODELS, type PlaneModel } from '@/lib/patrons'
 import { Airframe } from '../PlaneMap'
 
@@ -27,6 +28,7 @@ export default function Support({ patronSince, plane, open, onPlane }: {
       outcome === 'failed' ? 'The payment didn’t go through: the bank declined it. No money was taken. Try another card or PayPal.'
         : outcome === 'cancelled' ? 'Payment cancelled. Nothing was charged.'
         : ''
+    if (note) posthog.capture('donation_returned', { outcome })
     const t = note ? setTimeout(() => setStatus(note), 0) : undefined
     return () => {
       removeEventListener('pageshow', reset)
@@ -38,11 +40,13 @@ export default function Support({ patronSince, plane, open, onPlane }: {
     e.preventDefault()
     setBusy(true)
     setStatus('')
+    posthog.capture('donate_started', { amount, currency })
     const r = await fetch('/api/donate', { method: 'POST', body: JSON.stringify({ email, amount, currency }) }).catch(() => null)
     const j = r?.ok ? await r.json() : null
     if (j?.url) location.href = j.url
     else {
       setBusy(false)
+      posthog.capture('donate_failed', { status: r?.status ?? 0 })
       setStatus(
         r?.status === 400 ? 'Check the email and amount (at least 5 $ / 5 € / 100 ₽).'
           : r?.status === 422 ? 'lava.top didn’t accept this email. Try a different one.'

@@ -54,7 +54,9 @@ const GHOST = (
   </g>
 )
 
-export default function PlaneMap({ children }: { children: ReactNode }) {
+// pilot — карточка /p/@handle: его самолётики в фокусе, а его старые маршруты подмешаны в историю
+export default function PlaneMap({ children, pilot }: { children: ReactNode; pilot?: { handle: string; planes: PlaneRow[] } }) {
+  const star = pilot?.handle ?? null
   const [history, setHistory] = useState<PlaneRow[]>([])
   const [flights, setFlights] = useState<Flight[]>([])
   // страна с открытой карточкой — только по клику/тапу, наведение ничего не открывает
@@ -246,7 +248,15 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       // ref сразу, не дожидаясь рендера: первая волна взлетает раньше, чем обновится homes
       homesRef.current = new Map(withMySpot(ls, meRef.current, m?.spot ?? null).map((u) => [u.handle, u]))
       take(planes)
-      routesOf(rows)
+      // ponytail: старые рейсы пилота вытеснятся из истории после 200 новых — страницу почти никто не держит так долго
+      if (pilot) {
+        const ids = new Set(rows.map((p) => p.id))
+        rows = [...rows, ...pilot.planes.filter((p) => !ids.has(p.id))]
+        setHistory(rows)
+      }
+      const all = routesOf(rows)
+      const first = star ? [...all.filter((r) => r.lead.from_handle === star), ...all.filter((r) => r.lead.from_handle !== star)] : all
+      first
         .slice(0, MAX_AIR)
         .forEach((r, i) => timers.push(setTimeout(() => fly(r.lead), i * 450)))
     })
@@ -271,8 +281,8 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       }
       const all = routesOf(rows)
       const me = meRef.current
-      const mine = me ? all.filter((r) => r.lead.from_handle === me || r.lead.to_handle === me) : []
-      const pool = mine.length && Math.random() < 0.5 ? mine : all
+      const mine = star ? all.filter((r) => r.lead.from_handle === star) : me ? all.filter((r) => r.lead.from_handle === me || r.lead.to_handle === me) : []
+      const pool = mine.length && Math.random() < (star ? 0.8 : 0.5) ? mine : all
       for (let i = 0; i < 4 && pool.length; i++) if (fly(pool[Math.floor(Math.random() * pool.length)].lead, true)) break
     }, REPLAY_MS)
 
@@ -281,6 +291,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       clearInterval(replay)
       timers.forEach(clearTimeout)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- пилот приходит с сервера один раз
   }, [])
 
   useEffect(() => {
@@ -327,7 +338,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     stopPlacing('Saved. Planes sent to you now land right here.')
   }
 
-  const mapCls = `map${focus ? ' focused' : ''}${me ? ' personal' : ''}${placing ? ' placing' : ''}`
+  const mapCls = `map${focus ? ' focused' : ''}${star ?? me ? ' personal' : ''}${placing ? ' placing' : ''}`
 
   return (
     <>
@@ -336,7 +347,9 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
         <header className="masthead">
           {children}
           <p className="counter">
-            {me ? (
+            {star ? (
+              <><b>{history.filter((p) => p.from_handle === star).length}</b> flights by @{star}</>
+            ) : me ? (
               <><b>{history.filter((p) => p.from_handle === me).length}</b> of {history.length} recent flights are yours</>
             ) : (
               <><b>{history.length}</b> recent flights</>
@@ -417,6 +430,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                 key={f.key}
                 f={f}
                 me={me}
+                lead={star ?? me}
                 hit={!!focus && (countryOf(f.from_country) === focus || countryOf(f.to_country) === focus)}
               />
             ))}
@@ -569,7 +583,8 @@ function arc(a: Point, b: Point) {
 // аватарки только с домена X — url приходит из нашей базы, но лишний раз не доверяем
 const avatarOf = (url?: string | null) => (url?.startsWith('https://pbs.twimg.com/') ? url : null)
 
-function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null }) {
+// lead — чьи самолётики крупнее: зрителя или пилота с карточки /p
+function FlightView({ f, hit, me, lead }: { f: Flight; hit: boolean; me: string | null; lead: string | null }) {
   const root = useRef<SVGGElement>(null)
   // полёт и проявление/угасание — на одних SMIL-часах. Раньше прозрачность жила в CSS-анимации:
   // в фоновой вкладке часы расходились, и по возвращении самолётик висел видимым в точке прилёта
@@ -582,7 +597,7 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
   const dur = flightSeconds(f.a, f.b)
   // у каждого пилота своя краска
   const style = { '--dur': `${dur.toFixed(2)}s`, '--ink': userInk(f.from_handle) } as React.CSSProperties
-  const mine = !!me && f.from_handle === me
+  const mine = !!lead && f.from_handle === lead
   const forMe = !!me && f.to_handle === me && !mine
   const cls = `flight${hit ? ' hit' : ''}${f.echo ? ' echo' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}${f.from_patron ? ' patron' : ''}`
   // ленточка с хэндлом — у свежих, у своих и у летящих к тебе; эхо летит одной аватаркой

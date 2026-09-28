@@ -6,13 +6,24 @@ import { countryNames } from '@/lib/country'
 import Passport, { type Stamp } from './Passport'
 import Support from './Support'
 import type { PlaneModel } from '@/lib/patrons'
-import { Arrow } from '../icons'
+import { summary } from '@/lib/pilot'
+import { Arrow, XMark } from '../icons'
 
 type Me = {
   handle: string; country: string | null; image?: string | null; stamps?: Stamp[]
   patronSince?: string | null; plane?: PlaneModel; donations?: boolean; spot?: [number, number] | null
 }
 const options = countryNames()
+
+// пост в X со ссылкой на карточку /p/@handle — её превью и есть реклама
+function shareUrl(handle: string, stamps: Stamp[]) {
+  const { countries } = summary(stamps)
+  const text = countries
+    ? `My replies on X flew to ${countries} ${countries === 1 ? 'country' : 'countries'} as paper planes ✈️`
+    : 'My replies on X are paper planes now ✈️'
+  const url = `${location.origin}/p/${handle}`
+  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
+}
 
 export default function MePage() {
   const [me, setMe] = useState<Me | null | undefined>(undefined)
@@ -84,6 +95,14 @@ export default function MePage() {
         )}
       </div>
       <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} />
+      {me.handle && (
+        <p className="lede share">
+          <a className="tag" href={shareUrl(me.handle, me.stamps ?? [])} target="_blank" rel="noopener"
+            onClick={() => track('share_sky', { countries: summary(me.stamps ?? []).countries })}>
+            <XMark /> Share my sky
+          </a>
+        </p>
+      )}
       <Support patronSince={me.patronSince ?? null} plane={me.plane ?? 'dart'} open={!!me.donations} onPlane={setPlane} />
       <p className="lede"><Link className="tag" href="/">See your planes on the map <Arrow /></Link></p>
     </main>

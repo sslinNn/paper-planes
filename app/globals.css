@@ -474,3 +474,6 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .book.diplomatic .authority { color: var(--soot); }
 .dip-label { margin: 0; font: 900 1rem var(--font-display), sans-serif; letter-spacing: .3em; text-transform: uppercase; color: #9a6f1f; }
 .patron-visa { --visa: #9a6f1f; }
+
+/* ---------- карточка пилота /p/@handle ---------- */
+.pilot-face { width: 56px; height: 56px; border-radius: 50%; border: 2px solid var(--blue); mix-blend-mode: multiply; flex: none; }

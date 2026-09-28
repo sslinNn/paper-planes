@@ -6,6 +6,7 @@ import { isCountry } from '@/lib/country'
 import { inCountry } from '@/lib/geo'
 import { isPlaneModel } from '@/lib/patrons'
 import { pool } from '@/lib/db'
+import { stampsOf } from '@/lib/pilot-db'
 import { syncDonations } from '@/lib/donations'
 import { limited } from '@/lib/ratelimit'
 
@@ -23,15 +24,7 @@ export async function GET(req: Request) {
      from "user" where id = $1`, [s.user.id])
   const me = rows[0]
   if (!me.since_id) after(() => collect(s.user.id)) // новый юзер — сразу собрать его реплаи
-  // паспорт: страны, куда долетели мои самолётики, с датой первого прилёта
-  const { rows: stamps } = await pool.query(
-    `select coalesce(case when tu.id is not null then tu.country else p.to_country end, 'AQ') as country,
-            count(*)::int as count, min(p.created_at) as first
-     from planes p join account a on a."accountId" = p.from_x_id and a."providerId" = 'twitter'
-     left join account ta on ta."providerId" = 'twitter' and ta."accountId" = p.to_x_id
-     left join "user" tu on tu.id = ta."userId"
-     where a."userId" = $1
-     group by 1 order by min(p.created_at)`, [s.user.id])
+  const stamps = await stampsOf(s.user.id)
   return Response.json({
     handle: me.handle, country: me.country, image: me.image, stamps,
     spot: me.spot_lon == null ? null : [me.spot_lon, me.spot_lat],

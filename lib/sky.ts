@@ -2,6 +2,8 @@ export type PlaneRow = {
   id: number; from_handle: string; to_handle: string; from_country: string | null; to_country: string | null
   from_avatar?: string | null
   created_at?: string
+  from_plane?: string | null
+  from_patron?: boolean
 }
 export type CountrySky = { out: number; in: number; people: [string, number][]; destinations: [string, number][] }
 

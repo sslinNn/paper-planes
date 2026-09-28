@@ -5,7 +5,7 @@ import { greeting, stampDesign, type StampDesign } from '@/lib/stamps'
 import { Arrow } from '../icons'
 
 export type Stamp = { country: string; count: number; first: string }
-type Props = { handle: string; image?: string | null; home: string | null; stamps: Stamp[] }
+type Props = { handle: string; image?: string | null; home: string | null; stamps: Stamp[]; patronSince?: string | null }
 
 const PER_PAGE = 4
 const fmt = (iso: string) => new Date(iso).toLocaleDateString('en', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()
@@ -61,11 +61,27 @@ export function PassportStamp({ stamp }: { stamp: Stamp }) {
   )
 }
 
+// штамп донатера: золотая фольга, звезда, дата первого доната
+function PatronStamp({ since }: { since: string }) {
+  return (
+    <svg className="visa patron-visa" viewBox="0 0 200 150" style={{ rotate: '-4deg' } as React.CSSProperties} role="img" aria-label={`Patron of the sky since ${fmt(since)}`}>
+      <g filter="url(#rubber)">
+        <g className="visa-line"><circle cx="100" cy="75" r="68" /><circle cx="100" cy="75" r="61" /><circle cx="100" cy="75" r="44" /></g>
+        <text className="visa-hello" x="100" y="36">PATRON</text>
+        <text className="visa-name" x="100" y="72" textLength="120" lengthAdjust="spacingAndGlyphs">OF THE SKY</text>
+        <g className="visa-line"><Motif motif="star" /></g>
+        <text className="visa-small" x="100" y="128">{fmt(since)}</text>
+      </g>
+    </svg>
+  )
+}
+
 // ---------- страницы ----------
 
-function InsideCover() {
+function InsideCover({ diplomatic }: { diplomatic: boolean }) {
   return (
     <div className="page inside-cover">
+      {diplomatic && <p className="dip-label">Diplomatic</p>}
       <svg className="emblem" viewBox="-12 -11 28 19" aria-hidden="true">
         <path d="M15 0 L-11 -10 L-4 0 Z" /><path d="M15 0 L-4 0 L-10 7 Z" />
       </svg>
@@ -75,7 +91,8 @@ function InsideCover() {
   )
 }
 
-function IdentityPage({ handle, image, home, stamps }: Props) {
+function IdentityPage(props: Props) {
+  const { handle, image, home, stamps } = props
   const total = stamps.reduce((n, s) => n + s.count, 0)
   const issued = stamps[0]?.first
   // номер паспорта: PP + 7 цифр, постоянный для хэндла
@@ -86,7 +103,7 @@ function IdentityPage({ handle, image, home, stamps }: Props) {
   const photo = photoOf(image)
   return (
     <div className="page identity">
-      <p className="doc-head">Passport · Passeport · Паспорт</p>
+      <p className="doc-head">{props.patronSince ? 'Diplomatic passport' : 'Passport · Passeport · Паспорт'}</p>
       <div className="id-grid">
         {/* eslint-disable-next-line @next/next/no-img-element -- внешняя аватарка X, оптимизатор Next тут не нужен */}
         <div className="photo">{photo ? <img src={photo} alt={`@${handle}`} /> : <span>@</span>}</div>
@@ -105,11 +122,12 @@ function IdentityPage({ handle, image, home, stamps }: Props) {
   )
 }
 
-function VisaPage({ stamps, n }: { stamps: Stamp[]; n: number }) {
+function VisaPage({ stamps, n, patronSince }: { stamps: Stamp[]; n: number; patronSince?: string | null }) {
   return (
     <div className="page visas">
       <p className="doc-head">Visas <span>{n}</span></p>
       <ul className="visa-grid">
+        {patronSince && <li key="patron"><PatronStamp since={patronSince} /></li>}
         {stamps.map((s) => <li key={s.country}><PassportStamp stamp={s} /></li>)}
       </ul>
       {!stamps.length && <p className="blank">Empty page. Reply to someone abroad on X and your next plane stamps it.</p>}
@@ -122,9 +140,16 @@ function VisaPage({ stamps, n }: { stamps: Stamp[]; n: number }) {
 type Flip = null | 'next' | 'prev'
 
 export default function Passport(props: Props) {
+  // у донатера первая визовая страница начинается со штампа Patron of the Sky — он занимает одно место
+  const lead = props.patronSince ? 1 : 0
   const visas: Stamp[][] = []
-  for (let i = 0; i < Math.max(props.stamps.length, 1); i += PER_PAGE) visas.push(props.stamps.slice(i, i + PER_PAGE))
-  const pages: ReactNode[] = [<InsideCover key="c" />, <IdentityPage key="id" {...props} />, ...visas.map((s, i) => <VisaPage key={i} stamps={s} n={i + 1} />)]
+  for (let i = 0, cap = PER_PAGE - lead; i < Math.max(props.stamps.length, 1); i += cap, cap = PER_PAGE)
+    visas.push(props.stamps.slice(i, i + cap))
+  const pages: ReactNode[] = [
+    <InsideCover key="c" diplomatic={!!props.patronSince} />,
+    <IdentityPage key="id" {...props} />,
+    ...visas.map((s, i) => <VisaPage key={i} stamps={s} n={i + 1} patronSince={i === 0 ? props.patronSince : null} />),
+  ]
   if (pages.length % 2) pages.push(<VisaPage key="blank" stamps={[]} n={visas.length + 1} />)
 
   const [single, setSingle] = useState(false)
@@ -196,7 +221,7 @@ export default function Passport(props: Props) {
         </filter>
       </svg>
       <div
-        className={`book${single ? ' single' : ''}`}
+        className={`book${single ? ' single' : ''}${props.patronSince ? ' diplomatic' : ''}`}
         onPointerDown={(e) => (startX.current = e.clientX)}
         onPointerUp={(e) => {
           if (startX.current === null) return

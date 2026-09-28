@@ -24,3 +24,15 @@ insert into collector default values on conflict do nothing;
 
 -- после `npx auth migrate`: отметка последнего сбора по юзеру (замок от накрутки X API)
 alter table "user" add column if not exists "collectedAt" timestamptz;
+
+-- донаты (lava.top): один ряд на оплаченный контракт — вебхук идемпотентен
+create table if not exists patrons (
+  contract_id text primary key,
+  user_id text not null references "user"(id) on delete cascade,
+  amount numeric not null,
+  currency text not null,
+  paid_at timestamptz not null default now()
+);
+create index if not exists patrons_user on patrons (user_id);
+-- модель самолётика донатера: dart | glider | swallow | crane
+alter table "user" add column if not exists plane text;

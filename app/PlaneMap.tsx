@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { countryName } from '@/lib/country'
 import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
 import { countryOf, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
+import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import { Close } from './icons'
 
 type Flight = PlaneRow & { key: number; echo?: boolean; count: number }
@@ -180,6 +181,15 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           >
             <defs>
               <clipPath id="round" clipPathUnits="objectBoundingBox"><circle cx=".5" cy=".5" r=".5" /></clipPath>
+              {/* золотая фольга донатеров: металлическая краска ризографа с бегущим бликом */}
+              <linearGradient id="foil" x1="-1" y1="0" x2="0" y2="0" gradientUnits="objectBoundingBox" spreadMethod="repeat">
+                <stop offset="0" stopColor="#9a6f1f" />
+                <stop offset=".45" stopColor="#d9ad4b" />
+                <stop offset=".5" stopColor="#fff1c2" />
+                <stop offset=".55" stopColor="#d9ad4b" />
+                <stop offset="1" stopColor="#9a6f1f" />
+                <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="2 0" dur="2.4s" repeatCount="indefinite" />
+              </linearGradient>
               <pattern id="halftone" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
                 <circle cx="2.5" cy="2.5" r=".95" fill="var(--blue)" />
               </pattern>
@@ -290,6 +300,44 @@ function Arrivals({ planes }: { planes: PlaneRow[] }) {
   )
 }
 
+// модели самолётиков: у всех бумажный дротик, донатеры выбирают свою (все смотрят носом по +x)
+export function Airframe({ model }: { model: PlaneModel }) {
+  switch (model) {
+    case 'glider':
+      return (
+        <>
+          <path className="wing" d="M15 0 L-9 -1.6 L-9 1.6 Z" />
+          <path className="wing" d="M3 -1 L-1 -14 L-5 -14 L-4 -1 Z" />
+          <path className="wing" d="M3 1 L-1 14 L-5 14 L-4 1 Z" />
+          <path className="fold" d="M-6 -1 L-10 -5 L-11 -5 L-9 0 L-11 5 L-10 5 L-6 1 Z" />
+        </>
+      )
+    case 'swallow':
+      return (
+        <>
+          <path className="wing" d="M14 0 L-2 -11 L-13 -13 L-5 -2 L-13 5 L-2 4 Z" />
+          <path className="fold" d="M14 0 L-5 -2 L-13 5 L-2 4 Z" />
+        </>
+      )
+    case 'crane':
+      return (
+        <>
+          <path className="wing" d="M4 0 L-3 -14 L-6 0 Z" />
+          <path className="wing" d="M15 -5 L3 1 L-6 1 L-15 -4 L-7 4 L5 4 Z" />
+          <path className="fold" d="M4 0 L-2 9 L-6 1 Z" />
+        </>
+      )
+    default:
+      return (
+        <>
+          <path className="wing" d="M13 0 L-10 -9 L-4 0 Z" />
+          <path className="wing" d="M13 0 L-4 0 L-9 6 Z" />
+          <path className="fold" d="M13 0 L-4 0 L-9 6 Z" />
+        </>
+      )
+  }
+}
+
 function arc(p: PlaneRow) {
   const a = at(p.from_country)
   const b = at(p.to_country)
@@ -315,7 +363,7 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
   const style = { '--dur': `${dur.toFixed(2)}s`, '--ink': userInk(f.from_handle) } as React.CSSProperties
   const mine = !!me && f.from_handle === me
   const forMe = !!me && f.to_handle === me && !mine
-  const cls = `flight${hit ? ' hit' : ''}${f.echo ? ' echo' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}`
+  const cls = `flight${hit ? ' hit' : ''}${f.echo ? ' echo' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}${f.from_patron ? ' patron' : ''}`
   // ленточка с хэндлом — у свежих, у своих и у летящих к тебе; эхо летит одной аватаркой
   const banner = !f.echo || mine || forMe
   const avatar = avatarOf(f.from_avatar)
@@ -338,9 +386,7 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
       <g className="plane">
         <animateMotion ref={plane} rotate="auto" {...motion} />
         <g className="dart">
-          <path className="wing" d="M13 0 L-10 -9 L-4 0 Z" />
-          <path className="wing" d="M13 0 L-4 0 L-9 6 Z" />
-          <path className="fold" d="M13 0 L-4 0 L-9 6 Z" />
+          <Airframe model={f.from_patron && isPlaneModel(f.from_plane) ? f.from_plane : 'dart'} />
         </g>
       </g>
       {/* пилот и ленточка не поворачиваются вместе с самолётиком — лицо и текст всегда ровно */}

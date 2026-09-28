@@ -656,12 +656,13 @@ function CountryCard({ iso, sky, pinned, svg, spread, onClose, onEnter, onLeave 
     const pt = new DOMPoint(x, y).matrixTransform(m)
     const cx = pt.x - box.left
     const cy = pt.y - box.top
-    const cardW = Math.min(340, box.width * 0.86)
-    const left = cx > box.width * 0.55 ? cx - cardW - 28 : cx + 28
+    const cardW = card.current.offsetWidth
+    const cardH = card.current.offsetHeight
+    const left = cx > box.width * 0.55 ? cx - cardW - 24 : cx + 24
     card.current.style.left = `${Math.max(12, Math.min(left, box.width - cardW - 12))}px`
     // не заезжаем на шапку листа
     const floor = (el.parentElement?.offsetTop ?? 0) + 12
-    card.current.style.top = `${Math.max(floor, Math.min(cy - 90, box.height - 400))}px`
+    card.current.style.top = `${Math.max(floor, Math.min(cy - cardH / 2, box.height - cardH - 56))}px`
     card.current.style.visibility = 'visible'
   }, [iso, svg, spread])
 
@@ -669,29 +670,24 @@ function CountryCard({ iso, sky, pinned, svg, spread, onClose, onEnter, onLeave 
     <aside className="card" ref={card} style={{ visibility: 'hidden' }} aria-live="polite" onPointerEnter={onEnter} onPointerLeave={(e) => e.pointerType === 'mouse' && onLeave()}>
       {pinned && <button className="close" onClick={onClose} aria-label="Close"><Close /></button>}
       <h2>{countryName(iso)}</h2>
-      {iso === UNKNOWN && <p className="note">Planes from places we couldn’t pin down land here.</p>}
-      <div className="tally">
-        <b style={{ '--vol': `${Math.min(4.4, 2 + Math.log2(1 + out) * 0.45)}rem` } as React.CSSProperties}>{out}</b>
-        <span>{out === 1 ? 'plane out' : 'planes out'} · {s?.in ?? 0} in</span>
-      </div>
+      <p className="tally"><b>{out}</b> out · <b>{s?.in ?? 0}</b> in</p>
+      {iso === UNKNOWN && <p className="note">Where planes from unknown places land.</p>}
       {people.length ? (
         <>
-          <h3>Posting from here</h3>
           <ul className="people">
-            {people.slice(0, 5).map(([h]) => (
+            {people.slice(0, 3).map(([h]) => (
               <li key={h} style={{ '--ink': userInk(h) } as React.CSSProperties}>
                 <a href={`https://x.com/${h}`} target="_blank" rel="noopener noreferrer">@{h}</a>
               </li>
             ))}
-            {people.length > 5 && <li className="more">+{people.length - 5} more</li>}
+            {people.length > 3 && <li className="more">+{people.length - 3}</li>}
           </ul>
-          <h3>Flying to</h3>
-          <ul className="dests">
-            {s!.destinations.slice(0, 3).map(([c, n]) => <li key={c}><span>{countryName(c)}</span><span>{n}</span></li>)}
-          </ul>
+          <p className="dests">
+            → {s!.destinations.slice(0, 3).map(([c, n], i) => <span key={c}>{i > 0 && ', '}{countryName(c)} <b>{n}</b></span>)}
+          </p>
         </>
       ) : (
-        <p className="note">No planes from here yet. Reply to someone on X and yours will be the first.</p>
+        <p className="note">No planes from here yet.</p>
       )}
     </aside>
   )

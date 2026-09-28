@@ -106,6 +106,18 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .spread { position: relative; display: flex; flex-direction: column; height: 100svh; min-height: 540px; overflow: hidden; border-bottom: 2px solid var(--blue); }
 .stage { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .stage::-webkit-scrollbar { display: none; }
+.stage[data-zoomed], .stage[data-zoomed] .land { cursor: grab; }
+.stage[data-dragging], .stage[data-dragging] .land { cursor: grabbing; user-select: none; }
+/* кнопки масштаба: справа над табло прилётов */
+.zoom { position: absolute; right: var(--pad); bottom: 56px; z-index: 6; display: flex; flex-direction: column; }
+.zoom button {
+  width: 36px; height: 36px; border: 2px solid var(--blue); background: var(--paper); color: var(--blue);
+  font: 900 1.4rem/1 var(--font-display), sans-serif; cursor: pointer;
+}
+.zoom button + button { border-top: 0; }
+.zoom button:hover { background: var(--pink); color: var(--soot); }
+/* на тач-экранах есть щипок — кнопки только мешают */
+@media (hover: none) { .zoom { display: none; } }
 /* --zoom ставит щипок (PlaneMap): карта растёт, .stage её прокручивает */
 .map { display: block; width: calc(100% * var(--zoom, 1)); height: calc(100% * var(--zoom, 1)); touch-action: pan-x pan-y; }
 .pan-hint { display: none; }

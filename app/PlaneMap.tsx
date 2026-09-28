@@ -97,31 +97,35 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     return () => cancelAnimationFrame(id)
   }, [])
 
-  // приближение: щипок на телефоне, щипок тачпада / ctrl+колесо на ПК. Карта растёт внутри .stage,
-  // а таскают её обычной прокруткой. Точка под пальцами остаётся на месте
-  useEffect(() => {
+  // приближение: щипок на телефоне; на ПК — щипок тачпада, ctrl+колесо и кнопки ±. Карта растёт внутри .stage,
+  // а таскают её прокруткой (пальцем) или мышью. Точка под пальцами/курсором остаётся на месте.
+  // Масштаб живёт в ref, не в state: щипок не перерисовывает React-дерево на каждом кадре
+  const zoom = useRef(1)
+  const zoomAt = useCallback((next: number, cx?: number, cy?: number) => {
     const el = stage.current
     const map = svg.current
     if (!el || !map) return
-    let k = 1
-    const zoomAt = (next: number, cx: number, cy: number) => {
-      next = Math.min(MAX_ZOOM, Math.max(1, next))
-      if (next === k) return
-      const box = el.getBoundingClientRect()
-      const x = cx - box.left
-      const y = cy - box.top
-      const f = next / k
-      const sl = el.scrollLeft
-      const st = el.scrollTop
-      k = next
-      map.style.setProperty('--zoom', String(k))
-      el.scrollLeft = (sl + x) * f - x
-      el.scrollTop = (st + y) * f - y
-    }
+    next = Math.min(MAX_ZOOM, Math.max(1, next))
+    if (next === zoom.current) return
+    const box = el.getBoundingClientRect()
+    const x = (cx ?? box.left + box.width / 2) - box.left
+    const y = (cy ?? box.top + box.height / 2) - box.top
+    const f = next / zoom.current
+    const sl = el.scrollLeft
+    const st = el.scrollTop
+    zoom.current = next
+    map.style.setProperty('--zoom', String(next))
+    el.toggleAttribute('data-zoomed', next > 1)
+    el.scrollLeft = (sl + x) * f - x
+    el.scrollTop = (st + y) * f - y
+  }, [])
+  useEffect(() => {
+    const el = stage.current
+    if (!el) return
     let pinch: { d: number; k: number } | null = null
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
     const start = (e: TouchEvent) => {
-      if (e.touches.length === 2) pinch = { d: dist(e.touches), k }
+      if (e.touches.length === 2) pinch = { d: dist(e.touches), k: zoom.current }
     }
     const move = (e: TouchEvent) => {
       if (!pinch || e.touches.length !== 2) return
@@ -135,21 +139,57 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     const wheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return
       e.preventDefault()
-      zoomAt(k * Math.exp(-e.deltaY / 100), e.clientX, e.clientY)
+      zoomAt(zoom.current * Math.exp(-e.deltaY / 100), e.clientX, e.clientY)
+    }
+    // мышь: приближенную карту таскают зажатой кнопкой. Протащили — клик по стране под курсором не считается
+    let drag: { x: number; y: number; sl: number; st: number; moved: boolean } | null = null
+    let dragged = false
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || zoom.current === 1) return
+      drag = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop, moved: false }
+    }
+    const drift = (e: PointerEvent) => {
+      if (!drag) return
+      const dx = e.clientX - drag.x
+      const dy = e.clientY - drag.y
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return
+      if (!drag.moved) el.setAttribute('data-dragging', '')
+      drag.moved = true
+      el.scrollLeft = drag.sl - dx
+      el.scrollTop = drag.st - dy
+    }
+    const up = () => {
+      dragged = !!drag?.moved
+      drag = null
+      el.removeAttribute('data-dragging')
+    }
+    // capture на .stage срабатывает раньше React-обработчиков на корне
+    const swallow = (e: MouseEvent) => {
+      if (!dragged) return
+      dragged = false
+      e.stopPropagation()
     }
     el.addEventListener('touchstart', start, { passive: true })
     el.addEventListener('touchmove', move, { passive: false })
     el.addEventListener('touchend', end)
     el.addEventListener('touchcancel', end)
     el.addEventListener('wheel', wheel, { passive: false })
+    el.addEventListener('pointerdown', down)
+    addEventListener('pointermove', drift)
+    addEventListener('pointerup', up)
+    el.addEventListener('click', swallow, true)
     return () => {
+      el.removeEventListener('pointerdown', down)
+      removeEventListener('pointermove', drift)
+      removeEventListener('pointerup', up)
+      el.removeEventListener('click', swallow, true)
       el.removeEventListener('touchstart', start)
       el.removeEventListener('touchmove', move)
       el.removeEventListener('touchend', end)
       el.removeEventListener('touchcancel', end)
       el.removeEventListener('wheel', wheel)
     }
-  }, [])
+  }, [zoomAt])
 
   useEffect(() => {
     let rows: PlaneRow[] = []
@@ -351,6 +391,10 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           </svg>
         </div>
 
+        <div className="zoom">
+          <button type="button" aria-label="Zoom in" onClick={() => zoomAt(zoom.current * 1.6)}>+</button>
+          <button type="button" aria-label="Zoom out" onClick={() => zoomAt(zoom.current / 1.6)}>−</button>
+        </div>
         <Arrivals planes={history.slice(0, 12)} />
         {!panned && !placing && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
         {(placing || hint) && (

@@ -228,3 +228,21 @@ html { scrollbar-color: var(--blue) var(--paper); }
 }
 
 .me-title { padding-top: .12em; line-height: .95; font-size: min(12vw, 10rem); white-space: normal; overflow-wrap: anywhere; text-transform: none; }
+
+/* широкий экран: шапки нет, карта во всю высоту. Надписи — печатная этикетка
+   в пустом углу юга Тихого океана (слева снизу, западнее Южной Америки) */
+@media (min-aspect-ratio: 6/5) {
+  .masthead {
+    position: absolute; left: var(--pad); bottom: var(--pad);
+    width: max(200px, min(20vw, 320px));
+    flex-direction: column; align-items: flex-start; gap: 10px;
+    padding: 14px 16px 16px;
+    background: var(--paper);
+    border: 2px solid var(--blue);
+  }
+  .masthead::after { content: ""; position: absolute; inset: -2px; border: 2px solid var(--pink); transform: translate(2px, 1.5px); mix-blend-mode: multiply; pointer-events: none; }
+  .title { font-size: clamp(1.7rem, 2.5vw, 2.7rem); }
+  .lede { flex: none; font-size: .85rem; }
+  .counter { order: 0; margin: 0; font-size: .85rem; }
+  .masthead .tag { order: 0; font-size: .9rem; }
+}

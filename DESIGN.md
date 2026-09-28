@@ -137,7 +137,7 @@ A newsprint sheet printed in two riso inks, with soot for reading text.
 - **Label** (Archivo 600-800, .8-.85rem): notes, list captions inside the card ("Posting from here"), colophon.
 
 ### Named Rules
-**The Map Comes First Rule.** Nothing is printed over the map. Title, lede, counter and the login tag live in a paper masthead strip above it; the map fills the rest of the viewport edge to edge (`slice`). Projection is Miller (~1.82:1, close to screen proportions) rotated so the seam runs through the Bering Strait (−169°): Chukotka stays with Russia. Unknown-country planes land on the tip of the Antarctic Peninsula (−60°, −62°), visible even when wide screens trim the bottom. The user rejected both the full-measure band and the corner overlay because they hid the Americas and Greenland.
+**The Map Comes First Rule.** Nothing is printed over the map. On landscape screens title, lede, counter and the login tag sit in one printed label in the empty South Pacific corner (bottom-left, west of South America); on portrait phones they stay in a masthead strip above the pannable map; the map fills the rest of the viewport edge to edge (`slice`). Projection is Miller (~1.82:1, close to screen proportions) rotated so the seam runs through the Bering Strait (−169°): Chukotka stays with Russia. Unknown-country planes land on the tip of the Antarctic Peninsula (−60°, −62°), visible even when wide screens trim the bottom. The user rejected both the full-measure band and the corner overlay because they hid the Americas and Greenland.
 
 **The Volume Is Scale Rule.** Quantity is shown by numeral size, not by a chart or badge.
 

@@ -29,3 +29,15 @@ export function paidDonation(hook: unknown): { userId: string; contractId: strin
   if (typeof h.contractId !== 'string' || !h.contractId) return null
   return { userId: h.clientUtm.utm_content, contractId: h.contractId, amount: Number(h.amount) || 0, currency: String(h.currency ?? '') }
 }
+
+// сверка без вебхука: из списка счетов lava.top берём оплаченные и помеченные нами
+export function paidInvoices(items: unknown): { contractId: string; userId: string; amount: number; currency: string }[] {
+  if (!Array.isArray(items)) return []
+  return items.flatMap((i) => {
+    const utm = i?.clientUtm
+    if (String(i?.status).toLowerCase() !== 'completed') return []
+    if (utm?.utm_source !== UTM_SOURCE || typeof utm?.utm_content !== 'string' || !utm.utm_content) return []
+    if (typeof i?.id !== 'string' || !i.id) return []
+    return [{ contractId: i.id, userId: utm.utm_content, amount: Number(i.receipt?.amount) || 0, currency: String(i.receipt?.currency ?? '') }]
+  })
+}

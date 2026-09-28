@@ -5,12 +5,15 @@ import { collect } from '@/lib/collect'
 import { isCountry } from '@/lib/country'
 import { isPlaneModel } from '@/lib/patrons'
 import { pool } from '@/lib/db'
+import { syncDonations } from '@/lib/donations'
 
 const session = async () => auth.api.getSession({ headers: await headers() })
 
-export async function GET() {
+export async function GET(req: Request) {
   const s = await session()
   if (!s) return new Response(null, { status: 401 })
+  // вернулись с оплаты: сначала сверяемся с lava.top, чтобы золото появилось сразу, не дожидаясь вебхука
+  if (new URL(req.url).searchParams.has('sync')) await syncDonations().catch((e) => console.error('lava sync', e))
   const { rows } = await pool.query(`select handle, country, image, plane, "sinceId" as since_id,
        (select min(paid_at) from patrons where user_id = "user".id) as patron_since
      from "user" where id = $1`, [s.user.id])

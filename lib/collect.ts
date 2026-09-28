@@ -1,4 +1,5 @@
 import { auth } from './auth.ts'
+import { syncDonations } from './donations.ts'
 import { parseCountry } from './country.ts'
 import { pool } from './db.ts'
 import { type Me, replyTargets, resolveCountries, toPlanes } from './planes.ts'
@@ -87,5 +88,5 @@ export async function collect(userId?: string): Promise<number> {
 export async function collectIfDue(): Promise<void> {
   const { rowCount } = await pool.query(
     `update collector set last_run = now() where last_run < now() - interval '5 minutes'`)
-  if (rowCount) await collect()
+  if (rowCount) await Promise.all([collect(), syncDonations().catch((e) => console.error('lava sync', e))])
 }

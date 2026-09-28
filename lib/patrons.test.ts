@@ -35,3 +35,26 @@ test('isPlaneModel', () => {
   assert.equal(isPlaneModel('boeing'), false)
   assert.equal(isPlaneModel(null), false)
 })
+
+test('paidInvoices: completed invoices tagged by us, any case of status', async () => {
+  const { paidInvoices } = await import('./patrons.ts')
+  const inv = (id: string, status: string, utm: object | null) => ({
+    id, status, receipt: { amount: 10, currency: 'USD', fee: 0 }, clientUtm: utm,
+  })
+  const ours = { utm_source: 'paper-planes', utm_content: 'user-1' }
+  assert.deepEqual(
+    paidInvoices([
+      inv('a', 'COMPLETED', ours),
+      inv('b', 'FAILED', ours),
+      inv('c', 'completed', { utm_source: 'google', utm_content: 'user-1' }),
+      inv('d', 'NEW', ours),
+      inv('e', 'completed', ours),
+      inv('f', 'COMPLETED', null),
+    ]),
+    [
+      { contractId: 'a', userId: 'user-1', amount: 10, currency: 'USD' },
+      { contractId: 'e', userId: 'user-1', amount: 10, currency: 'USD' },
+    ],
+  )
+  assert.deepEqual(paidInvoices('nope'), [])
+})

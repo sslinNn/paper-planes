@@ -18,9 +18,9 @@ export default function MePage() {
   const [status, setStatus] = useState('')
 
   useEffect(() => {
-    const load = () => fetch('/api/me').then(async (r) => (r.ok ? ((await r.json()) as Me) : null))
-    // вернулись с оплаты: вебхук приходит не мгновенно — проверяем минуту, пока не появится статус донатера
     const thanks = new URLSearchParams(location.search).has('thanks')
+    const load = () => fetch(thanks ? '/api/me?sync=1' : '/api/me').then(async (r) => (r.ok ? ((await r.json()) as Me) : null))
+    // вернулись с оплаты: вебхук приходит не мгновенно — проверяем минуту, пока не появится статус донатера
     load().then((m) => {
       setMe(m)
       if (thanks && !m?.patronSince) setStatus('Thank you! Your gold arrives as soon as the payment clears.')

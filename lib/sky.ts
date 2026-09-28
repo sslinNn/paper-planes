@@ -59,3 +59,12 @@ export class Traffic {
     return true
   }
 }
+
+// у каждого пилота своя краска: тон из хэша хэндла (FNV-1a), синий диапазон карты (200–260°) пропущен
+export function userHue(handle: string): number {
+  let h = 0x811c9dc5
+  for (const c of handle.toLowerCase()) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193)
+  const hue = (h >>> 0) % 300
+  return hue < 200 ? hue : hue + 60
+}
+export const userInk = (handle: string) => `oklch(0.7 0.19 ${userHue(handle)})`

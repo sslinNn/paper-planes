@@ -116,7 +116,9 @@ A newsprint sheet printed in two riso inks, with soot for reading text.
 - **Soot** (`soot`): all reading text, text on pink, the plane wing outlines, the tag's dashed inner rule.
 
 ### Named Rules
-**The Two Inks Rule.** Only blue and pink are inks. Purple exists solely where they overprint (the plane's fold facet: blue at .55 opacity multiplied over pink). Never pick a purple, green or any third ink.
+**The Pilot Ink Rule.** Every sender prints in their own ink: hue from an FNV-1a hash of the handle, `oklch(0.7 0.19 hue)`, skipping the map-blue band (200–260°). It colors only the plane (wings, trail, landing stamp, avatar ring) and the swatch next to the handle in the country card; text stays soot. Pink remains the fallback ink and the brand ink for chrome.
+
+**The Two Inks Rule.** On the map and chrome, only blue and pink are inks. Purple exists solely where they overprint (the plane's fold facet: blue at .55 opacity multiplied over pink). Never pick a purple, green or any third ink.
 
 **The Soot Reads Rule.** Text under display size is soot. Blue is linework and display ink (headlines, big numerals); pink is fill, never text on paper.
 

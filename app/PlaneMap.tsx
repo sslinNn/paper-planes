@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { countryName } from '@/lib/country'
 import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
-import { countryOf, routeKey, routes as routesOf, summarize, Traffic, type PlaneRow, UNKNOWN } from '@/lib/sky'
+import { countryOf, routeKey, routes as routesOf, summarize, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
 import { Close } from './icons'
 
 type Flight = PlaneRow & { key: number; echo?: boolean; count: number }
@@ -284,7 +284,8 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
   const [bx, by] = projection(b)!
   const d = arc(f)
   const dur = flightSeconds(f)
-  const style = { '--dur': `${dur.toFixed(2)}s` } as React.CSSProperties
+  // у каждого пилота своя краска
+  const style = { '--dur': `${dur.toFixed(2)}s`, '--ink': userInk(f.from_handle) } as React.CSSProperties
   const mine = !!me && f.from_handle === me
   const forMe = !!me && f.to_handle === me && !mine
   const cls = `flight${hit ? ' hit' : ''}${f.echo ? ' echo' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}`
@@ -294,7 +295,7 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
   const motion = { dur: `${dur.toFixed(2)}s`, begin: 'indefinite', fill: 'freeze' as const, path: d ?? '', keyPoints: '0;1', keyTimes: '0;1', calcMode: 'spline' as const, keySplines: EASE }
 
   // одна страна — самолётик не летит, просто штамп на месте
-  if (!d) return <circle className={cls + ' stamp'} cx={bx} cy={by} r={4} style={{ '--dur': '0s' } as React.CSSProperties} />
+  if (!d) return <circle className={cls + ' stamp'} cx={bx} cy={by} r={4} style={{ '--dur': '0s', '--ink': userInk(f.from_handle) } as React.CSSProperties} />
 
   const mask = `reveal-${f.key}`
   return (
@@ -377,7 +378,9 @@ function CountryCard({ iso, sky, pinned, svg, spread, onClose, onEnter, onLeave 
           <h3>Posting from here</h3>
           <ul className="people">
             {people.slice(0, 5).map(([h]) => (
-              <li key={h}><a href={`https://x.com/${h}`} target="_blank" rel="noopener noreferrer">@{h}</a></li>
+              <li key={h} style={{ '--ink': userInk(h) } as React.CSSProperties}>
+                <a href={`https://x.com/${h}`} target="_blank" rel="noopener noreferrer">@{h}</a>
+              </li>
             ))}
             {people.length > 5 && <li className="more">+{people.length - 5} more</li>}
           </ul>

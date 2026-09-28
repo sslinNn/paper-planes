@@ -70,9 +70,11 @@ export async function collect(userId?: string): Promise<number> {
     `select u.id as user_id, a.id as account_id, a."accountId" as x_id, u.handle, u.country,
             u."countryManual" as country_manual, u."sinceId" as since_id
      from "user" u join account a on a."userId" = u.id and a."providerId" = 'twitter'
-     where a."refreshToken" is not null and ($1::text is null or u.id = $1)`, [userId ?? null])
+     where a."refreshToken" is not null and ($1::text is null or u.id = $1)
+     order by u."collectedAt" asc nulls first limit 40`, [userId ?? null])
 
-  // ponytail: юзеры по очереди в одном вызове; упрёмся в лимит времени функции (300 с) — батчить курсором
+  // по кругу: за прогон — 40 самых давно собранных, так укладываемся в лимит функции (300 с) и в бюджет X API.
+  // ponytail: при 40 за 5 мин юзер обновляется раз в (юзеров / 8) мин; больше юзеров — cron и батчи побольше
   let planes = 0
   for (const r of rows) {
     try {

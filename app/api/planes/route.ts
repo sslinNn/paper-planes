@@ -12,5 +12,6 @@ export async function GET(req: Request) {
      left join account a on a."providerId" = 'twitter' and a."accountId" = p.from_x_id
      left join "user" u on u.id = a."userId"
      where p.id > $1 order by p.id desc limit 200`, [since])
-  return Response.json(rows)
+  // CDN держит ответ 10 с: в наплыв все зрители делят один запрос в БД, а не бьют её каждые 20 с
+  return Response.json(rows, { headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30' } })
 }

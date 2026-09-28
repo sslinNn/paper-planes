@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PLANE_MODELS, type PlaneModel } from '@/lib/patrons'
 import { Airframe } from '../PlaneMap'
 
@@ -16,6 +16,23 @@ export default function Support({ patronSince, plane, open, onPlane }: {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    // вернулись со страницы оплаты кнопкой «Назад» — браузер достаёт страницу из кэша вместе с «Opening payment…»
+    const reset = (e: PageTransitionEvent) => e.persisted && setBusy(false)
+    addEventListener('pageshow', reset)
+    // lava вернула сюда после отказа банка или отмены — говорим об этом прямо
+    const outcome = new URLSearchParams(location.search).get('payment')
+    const note =
+      outcome === 'failed' ? 'The payment didn’t go through: the bank declined it. No money was taken. Try another card or PayPal.'
+        : outcome === 'cancelled' ? 'Payment cancelled. Nothing was charged.'
+        : ''
+    const t = note ? setTimeout(() => setStatus(note), 0) : undefined
+    return () => {
+      removeEventListener('pageshow', reset)
+      clearTimeout(t)
+    }
+  }, [])
 
   const donate = async (e: React.FormEvent) => {
     e.preventDefault()

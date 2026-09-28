@@ -26,8 +26,8 @@ export async function POST(req: Request) {
       // lava.top принимает адреса возврата только по https — локально (http://127.0.0.1) их не передаём
       ...(origin.startsWith('https://') && {
         successful_return_url: `${origin}/me?thanks=1`,
-        failure_return_url: `${origin}/me`,
-        cancel_return_url: `${origin}/me`,
+        failure_return_url: `${origin}/me?payment=failed`,
+        cancel_return_url: `${origin}/me?payment=cancelled`,
       }),
     }),
   })

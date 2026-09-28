@@ -38,8 +38,21 @@ const routeName = (key: string) => key.split('>').map(countryName).join(' → ')
 
 const fetchPlanes = (after: number): Promise<PlaneRow[]> =>
   fetch(`/api/planes?after=${after}`).then((r) => (r.ok ? r.json() : [])).catch(() => [])
+type Me = { handle?: string; country?: string | null; spot?: Point | null }
+const fetchMe = (): Promise<Me | null> => fetch('/api/me').then((r) => (r.ok ? r.json() : null)).catch(() => null)
+const fetchLocals = (): Promise<Local[]> => fetch('/api/locals').then((r) => (r.ok ? r.json() : [])).catch(() => [])
+// своя точка — из /api/me: /api/locals CDN держит минуту, а себя надо видеть сразу после сохранения
+const withMySpot = (locals: Local[], me: string | null, spot: Point | null | undefined) =>
+  spot === undefined ? locals : locals.map((u) => (u.handle === me ? { ...u, spot } : u))
 
 const landPaths = land.map((f) => ({ iso: isoOf(f), d: path(f) ?? '' }))
+// статика карты считаем и строим один раз, а не на каждый взлёт самолётика
+const GRATICULE = path(graticule) ?? ''
+const GHOST = (
+  <g className="ghost" transform="translate(1.6 1.1)">
+    {landPaths.map(({ d }, i) => <path key={i} d={d} />)}
+  </g>
+)
 
 export default function PlaneMap({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<PlaneRow[]>([])
@@ -50,15 +63,11 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<string | null>(null)
   const [locals, setLocals] = useState<Local[]>([])
   const [myCountry, setMyCountry] = useState<string | null>(null)
-  // своя точка — из /api/me: /api/locals CDN держит минуту, а себя надо видеть сразу после сохранения
   const [mySpot, setMySpot] = useState<Point | null | undefined>(undefined)
   // /?spot — режим «ткни, где живёшь»: тап по своей стране сохраняет точку
   const [placing, setPlacing] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
-  const people = useMemo(
-    () => (mySpot === undefined ? locals : locals.map((u) => (u.handle === me ? { ...u, spot: mySpot } : u))),
-    [locals, me, mySpot],
-  )
+  const people = useMemo(() => withMySpot(locals, me, mySpot), [locals, me, mySpot])
   const homes = useMemo<Homes>(() => new Map(people.map((u) => [u.handle, u])), [people])
   const homesRef = useRef(homes)
   useEffect(() => {
@@ -69,24 +78,6 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   const stage = useRef<HTMLDivElement>(null)
   const svg = useRef<SVGSVGElement>(null)
   const spread = useRef<HTMLDivElement>(null)
-
-  // кто смотрит: свои самолётики крупнее и ярче, летящие к тебе — с ленточкой «→ you»
-  useEffect(() => {
-    fetch('/api/me')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((m: { handle?: string; country?: string | null; spot?: Point | null } | null) => {
-        meRef.current = m?.handle ?? null
-        setMe(meRef.current)
-        setMyCountry(m?.country ?? null)
-        setMySpot(m?.spot ?? null)
-        if (m?.handle && new URLSearchParams(location.search).has('spot')) setPlacing(true)
-      })
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    fetch('/api/locals').then((r) => (r.ok ? r.json() : [])).then(setLocals).catch(() => {})
-  }, [])
 
   // на телефоне карта шире экрана — начинаем с середины мира
   useEffect(() => {
@@ -221,8 +212,18 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       return planes
     }
 
-    // первая волна: по одному самолётику на маршрут, вразнобой
-    fetchPlanes(0).then((planes) => {
+    // первая волна: по одному самолётику на маршрут, вразнобой. Ждёт и зрителя, и местных:
+    // без них самолётики взлетали бы из центров стран, а не от аватарок — «из ниоткуда»
+    Promise.all([fetchPlanes(0), fetchMe(), fetchLocals()]).then(([planes, m, ls]) => {
+      // кто смотрит: свои самолётики крупнее и ярче, летящие к тебе — с ленточкой «→ you»
+      meRef.current = m?.handle ?? null
+      setMe(meRef.current)
+      setMyCountry(m?.country ?? null)
+      setMySpot(m?.spot ?? null)
+      if (m?.handle && new URLSearchParams(location.search).has('spot')) setPlacing(true)
+      setLocals(ls)
+      // ref сразу, не дожидаясь рендера: первая волна взлетает раньше, чем обновится homes
+      homesRef.current = new Map(withMySpot(ls, meRef.current, m?.spot ?? null).map((u) => [u.handle, u]))
       take(planes)
       routesOf(rows)
         .slice(0, MAX_AIR)
@@ -353,7 +354,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
             </defs>
 
             <rect width={W} height={H} fill="transparent" onClick={(e) => (placing ? place(null, e) : setFocus(null))} />
-            <path d={path(graticule) ?? ''} className="graticule" />
+            <path d={GRATICULE} className="graticule" />
 
             <g>
               {landPaths.map(({ iso, d }, i) => {

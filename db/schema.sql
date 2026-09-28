@@ -65,3 +65,6 @@ create table if not exists rate_limits (
   started timestamptz not null,
   n int not null
 );
+
+-- паспорт (/api/me) ищет самолётики юзера по from_x_id; таблица растёт вечно, без индекса это seq scan
+create index if not exists planes_from_x_id on planes (from_x_id);

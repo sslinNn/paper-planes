@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import posthog from 'posthog-js'
+import { identify, track } from '@/lib/track'
 import { useEffect, useState } from 'react'
 import { countryNames } from '@/lib/country'
 import Passport, { type Stamp } from './Passport'
@@ -25,8 +25,8 @@ export default function MePage() {
     load().then((m) => {
       setMe(m)
       // склеиваем анонимные визиты с X-хэндлом, чтобы в PostHog видеть путь человека целиком
-      if (m?.handle) posthog.identify(m.handle, { handle: m.handle, country: m.country, patron: !!m.patronSince })
-      if (thanks) posthog.capture('donation_returned', { outcome: 'paid', patron: !!m?.patronSince })
+      if (m?.handle) identify(m.handle, { handle: m.handle, country: m.country, patron: !!m.patronSince })
+      if (thanks) track('donation_returned', { outcome: 'paid', patron: !!m?.patronSince })
       if (thanks && !m?.patronSince) setStatus('Thank you! Your gold arrives as soon as the payment clears.')
     })
     if (!thanks) return
@@ -55,14 +55,14 @@ export default function MePage() {
     const country = value || null
     const r = await fetch('/api/me', { method: 'POST', body: JSON.stringify({ country }) })
     if (r.ok) setMe({ ...me, country, spot: null }) // новая страна — старая точка сброшена
-    if (r.ok) posthog.capture('country_set', { country })
+    if (r.ok) track('country_set', { country })
     setStatus(r.ok ? 'Saved. Your next planes take off from here.' : 'Couldn’t save that. Try again in a moment.')
   }
 
   const setPlane = async (plane: PlaneModel) => {
     const r = await fetch('/api/me', { method: 'POST', body: JSON.stringify({ plane }) })
     if (r.ok) setMe({ ...me, plane })
-    if (r.ok) posthog.capture('plane_changed', { plane })
+    if (r.ok) track('plane_changed', { plane })
   }
 
   const handle = me.handle ? `@${me.handle}` : 'You’re in'

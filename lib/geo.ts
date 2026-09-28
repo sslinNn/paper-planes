@@ -15,7 +15,8 @@ export const projection = geoProjection(miller).rotate([-11, 0]).scale(W / (2 * 
 const top = projection([11, NORTH])![1]
 projection.translate([W / 2, -top])
 export const H = projection([11, SOUTH])![1]
-export const path = geoPath(projection)
+// 0.1 единицы карты (ширина 1000) — меньше пикселя даже при пятикратном зуме; пути в HTML короче на четверть
+export const path = geoPath(projection).digits(1)
 
 // неизвестная страна — Антарктида: кончик Антарктического полуострова, виден даже когда широкий экран режет низ
 export const FOG: [number, number] = [-60, -62]

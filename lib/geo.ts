@@ -39,6 +39,7 @@ export const graticule = geoGraticule10()
 export const isoOf = (f: GeoJSON.Feature) => countries.numericToAlpha2(String(f.id)) ?? null
 
 // радианы по большому кругу — для длительности полёта
+export const EARTH_KM = 6371
 export const distance = (a: [number, number], b: [number, number]) => geoDistance(a, b)
 
 // точка юзера должна лежать в его стране — по тем же контурам, что нарисованы на карте

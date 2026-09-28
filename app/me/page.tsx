@@ -6,7 +6,7 @@ import { countryNames } from '@/lib/country'
 import Passport, { type Stamp } from './Passport'
 import Support from './Support'
 import type { PlaneModel } from '@/lib/patrons'
-import { summary } from '@/lib/pilot'
+import { kmFlown, summary } from '@/lib/pilot'
 import { Arrow, XMark } from '../icons'
 
 type Me = {
@@ -15,13 +15,17 @@ type Me = {
 }
 const options = countryNames()
 
-// пост в X со ссылкой на карточку /p/@handle — её превью и есть реклама
-function shareUrl(handle: string, stamps: Stamp[]) {
+// пост в X со ссылкой на карточку /p/@handle — её превью и есть реклама. Км звучат громче, чем «2 страны»
+function shareUrl(handle: string, home: string | null, stamps: Stamp[]) {
   const { countries } = summary(stamps)
-  const text = countries
-    ? `My replies on X flew to ${countries} ${countries === 1 ? 'country' : 'countries'} as paper planes ✈️`
-    : 'My replies on X are paper planes now ✈️'
-  const url = `${location.origin}/p/${handle}`
+  const km = kmFlown(home, stamps)
+  const where = `${countries} ${countries === 1 ? 'country' : 'countries'}`
+  const text = km
+    ? `My replies on X flew ${km.toLocaleString('en')} km across ${where} as paper planes ✈️`
+    : countries
+      ? `My replies on X flew to ${where} as paper planes ✈️`
+      : 'My replies on X are paper planes now ✈️'
+  const url = `${location.origin}/p/${handle}?ref=${handle}`
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
 }
 
@@ -32,24 +36,28 @@ export default function MePage() {
   useEffect(() => {
     const thanks = new URLSearchParams(location.search).has('thanks')
     const load = () => fetch(thanks ? '/api/me?sync=1' : '/api/me').then(async (r) => (r.ok ? ((await r.json()) as Me) : null))
-    // вернулись с оплаты: вебхук приходит не мгновенно — проверяем минуту, пока не появится статус донатера
+    // ждём минуту, пока не появится то, за чем пришли: после оплаты — статус донатера (вебхук не мгновенный),
+    // у нового юзера — первые самолётики (сбор реплаев запускается на первом GET /api/me и идёт несколько секунд)
+    const waiting = (m: Me | null) => (thanks ? !m?.patronSince : !!m && !m.stamps?.length)
+    let t: ReturnType<typeof setInterval> | undefined
     load().then((m) => {
       setMe(m)
       // склеиваем анонимные визиты с X-хэндлом, чтобы в PostHog видеть путь человека целиком
       if (m?.handle) identify(m.handle, { handle: m.handle, country: m.country, patron: !!m.patronSince })
       if (thanks) track('donation_returned', { outcome: 'paid', patron: !!m?.patronSince })
-      if (thanks && !m?.patronSince) setStatus('Thank you! Your gold arrives as soon as the payment clears.')
+      if (!waiting(m)) return
+      setStatus(thanks ? 'Thank you! Your gold arrives as soon as the payment clears.' : 'Your planes are taking off: reading your replies on X…')
+      let tries = 0
+      t = setInterval(async () => {
+        const next = await load()
+        if (!waiting(next) || ++tries > 12) {
+          clearInterval(t)
+          if (next) setMe(next)
+          if (!waiting(next) || !thanks) setStatus('')
+          if (!thanks && next?.stamps?.length) track('first_planes_landed', { planes: summary(next.stamps).planes })
+        }
+      }, 5000)
     })
-    if (!thanks) return
-    let tries = 0
-    const t = setInterval(async () => {
-      const m = await load()
-      if (m?.patronSince || ++tries > 12) {
-        clearInterval(t)
-        if (m) setMe(m)
-        if (m?.patronSince) setStatus('')
-      }
-    }, 5000)
     return () => clearInterval(t)
   }, [])
 
@@ -94,15 +102,15 @@ export default function MePage() {
           </p>
         )}
       </div>
-      <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} />
       {me.handle && (
         <p className="lede share">
-          <a className="tag" href={shareUrl(me.handle, me.stamps ?? [])} target="_blank" rel="noopener"
+          <a className="tag" href={shareUrl(me.handle, me.country, me.stamps ?? [])} target="_blank" rel="noopener"
             onClick={() => track('share_sky', { countries: summary(me.stamps ?? []).countries })}>
             <XMark /> Share my sky
           </a>
         </p>
       )}
+      <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} />
       <Support patronSince={me.patronSince ?? null} plane={me.plane ?? 'dart'} open={!!me.donations} onPlane={setPlane} />
       <p className="lede"><Link className="tag" href="/">See your planes on the map <Arrow /></Link></p>
     </main>

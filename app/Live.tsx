@@ -1,13 +1,19 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { Arrow } from './icons'
+import { authClient } from '@/lib/auth-client'
+import { OWNER } from '@/lib/site'
 
 const STATS = process.env.NEXT_PUBLIC_STATS_URL
+// «3 visitors today» отпугивает сильнее пустоты: до порога цифры видит только автор
+const SHOW_FROM = 100
 const fmt = (n: number) => n.toLocaleString('en-US')
 
 // «сейчас смотрят / за сегодня»: пульс, пока вкладка на экране
 export default function Live() {
   const [n, setN] = useState<{ online: number; today: number } | null>(null)
+  const { data: session } = authClient.useSession()
+  const owner = (session?.user as { handle?: string } | undefined)?.handle?.toLowerCase() === OWNER.toLowerCase()
 
   useEffect(() => {
     let id: string
@@ -32,7 +38,7 @@ export default function Live() {
     }
   }, [])
 
-  if (!n) return null
+  if (!n || (n.today < SHOW_FROM && !owner)) return null
   return (
     <p className="live">
       <span className="live-dot" aria-hidden="true" />

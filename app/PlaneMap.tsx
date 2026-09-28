@@ -1,11 +1,12 @@
 'use client'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { countryName } from '@/lib/country'
-import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
+import { at, distance, EARTH_KM, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
 import { countryOf, flightLog, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import { Close } from './icons'
 import Live from './Live'
+import { OWNER } from '@/lib/site'
 
 type Point = [number, number]
 // a, b — откуда и куда летит, считаются один раз при взлёте
@@ -32,7 +33,6 @@ const home = (homes: Homes, handle: string, country: string | null): Point => {
 const endsOf = (p: PlaneRow, homes: Homes): [Point, Point] => [home(homes, p.from_handle, p.from_country), home(homes, p.to_handle, p.to_country)]
 // одна кривая на полёт: и самолётик, и проявка следа
 const EASE = '.45 0 .25 1'
-const EARTH_KM = 6371
 const km = (n: number) => `${Math.round(n).toLocaleString('en')} km`
 const routeName = (key: string) => key.split('>').map(countryName).join(' → ')
 
@@ -359,7 +359,7 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
             )}
           </p>
           <p className="byline">
-            built by <a href="https://x.com/_sslinNn" target="_blank" rel="noopener">@_sslinNn</a>
+            built by <a href={`https://x.com/${OWNER}`} target="_blank" rel="noopener">@{OWNER}</a>
           </p>
         </header>
         <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>

@@ -72,7 +72,9 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .lede strong { font-weight: 800; }
 .counter { order: 3; margin: 0 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .counter b { font: 900 1.6em/1 var(--font-display), sans-serif; color: var(--blue); margin-right: .15em; }
-.masthead .tag { order: 4; }
+.masthead .tag, .masthead .login { order: 4; }
+.login { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.login .fine { opacity: .75; }
 .byline { order: 5; flex-basis: 100%; margin: 0; font-size: .8rem; font-weight: 600; opacity: .75; }
 .byline a { color: var(--blue); font-weight: 800; }
 
@@ -285,7 +287,8 @@ html { scrollbar-color: var(--blue) var(--paper); }
   .title { font-size: clamp(1.7rem, 2.5vw, 2.7rem); }
   .lede { flex: none; font-size: .85rem; }
   .counter { order: 0; margin: 0; font-size: .85rem; white-space: normal; }
-  .masthead .tag { order: 0; font-size: .9rem; }
+  .masthead .tag, .masthead .login { order: 0; }
+  .masthead .tag { font-size: .9rem; }
 }
 
 /* ---------- табло прилётов ---------- */

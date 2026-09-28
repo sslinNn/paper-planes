@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { summarize, UNKNOWN } from './sky.ts'
+import { flightLog, summarize, UNKNOWN } from './sky.ts'
 
 const p = (from: string, fc: string | null, to: string, tc: string | null) =>
   ({ id: 0, from_handle: from, to_handle: to, from_country: fc, to_country: tc })
@@ -62,4 +62,14 @@ test('timeAgo: short human intervals', async () => {
   assert.equal(timeAgo('2026-09-28T11:58:00Z', now), '2 min ago')
   assert.equal(timeAgo('2026-09-28T09:00:00Z', now), '3 h ago')
   assert.equal(timeAgo('2026-09-25T12:00:00Z', now), '3 d ago')
+})
+
+test('flight log skips unknown countries in distance and finds the top pilot and route', () => {
+  const km = (x: { from_country: string | null }) => (x.from_country === 'RU' ? 100 : 10)
+  const log = flightLog([p('a', 'RU', 'x', 'US'), p('a', 'RU', 'y', 'US'), p('b', 'DE', 'z', 'GB'), p('c', null, 'a', 'RU')], km)
+  assert.equal(log.km, 210)
+  assert.equal(log.longest?.km, 100)
+  assert.deepEqual(log.pilot, { handle: 'a', count: 2 })
+  assert.equal(log.route?.key, 'RU>US')
+  assert.equal(flightLog([p('a', 'RU', 'b', 'US')], km).route, null)
 })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { at, FOG } from './geo.ts'
+import { at, FOG, inCountry } from './geo.ts'
 
 test('known country → finite centroid in the right hemisphere', () => {
   const [lon, lat] = at('BR')
@@ -28,4 +28,10 @@ test('Chukotka stays with Russia: the seam runs through the Bering Strait', asyn
   const alaska = projection([-165, 65])![0] // западная Аляска
   assert.ok(chukotka > W * 0.95, `chukotka x=${chukotka}`)
   assert.ok(alaska < W * 0.05, `alaska x=${alaska}`)
+})
+
+test('spot inside its country only', () => {
+  assert.ok(inCountry('RU', [37.6, 55.75])) // Москва
+  assert.ok(!inCountry('RU', [2.35, 48.85])) // Париж
+  assert.ok(!inCountry('XX', [37.6, 55.75]))
 })

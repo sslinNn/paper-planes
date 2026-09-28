@@ -79,3 +79,27 @@ export function timeAgo(iso: string, now = Date.now()): string {
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`
   return `${Math.floor(s / 86400)} d ago`
 }
+
+export type FlightLog = {
+  km: number
+  longest: { plane: PlaneRow; km: number } | null
+  pilot: { handle: string; count: number } | null
+  route: Route | null
+}
+
+// бортжурнал по последним рейсам. Антарктида — это «страна неизвестна», её километры выдуманы и не считаются
+export function flightLog(planes: PlaneRow[], kmOf: (p: PlaneRow) => number): FlightLog {
+  let km = 0
+  let longest: FlightLog['longest'] = null
+  const pilots = new Map<string, number>()
+  for (const p of planes) {
+    pilots.set(p.from_handle, (pilots.get(p.from_handle) ?? 0) + 1)
+    if (!p.from_country || !p.to_country) continue
+    const d = kmOf(p)
+    km += d
+    if (!longest || d > longest.km) longest = { plane: p, km: d }
+  }
+  const [top] = ranked(pilots)
+  const [route] = routes(planes).filter((r) => r.count > 1)
+  return { km, longest, pilot: top ? { handle: top[0], count: top[1] } : null, route: route ?? null }
+}

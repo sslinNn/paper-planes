@@ -2,14 +2,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { countryName } from '@/lib/country'
 import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
-import { countryOf, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
+import { countryOf, flightLog, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import { Close } from './icons'
 import Live from './Live'
 
-type Flight = PlaneRow & { key: number; echo?: boolean; count: number }
+type Point = [number, number]
+// a, b — откуда и куда летит, считаются один раз при взлёте
+type Flight = PlaneRow & { key: number; echo?: boolean; count: number; a: Point; b: Point }
 type Focus = { iso: string; pinned: boolean } | null
 type Sky = ReturnType<typeof summarize>
+type Local = { handle: string; country: string; image: string | null; patron: boolean; spot: Point | null }
+type Homes = Map<string, Local>
 
 const MAX_FLIGHTS = 160
 const POLL_MS = 20_000
@@ -17,11 +21,21 @@ const REPLAY_MS = 2_600
 const TRAIL_MS = 60_000
 // сколько самолётиков одновременно в небе — больше превращается в кашу
 const MAX_AIR = 10
+const MAX_ZOOM = 5
 
 // длиннее маршрут — дольше полёт
-const flightSeconds = (p: PlaneRow) => 2 + distance(at(p.from_country), at(p.to_country)) * 1.4
+const flightSeconds = (a: Point, b: Point) => 2 + distance(a, b) * 1.4
+// дом пилота: его точка на карте, если он всё ещё живёт в этой стране, иначе центр страны
+const home = (homes: Homes, handle: string, country: string | null): Point => {
+  const u = homes.get(handle)
+  return u?.spot && u.country === country ? u.spot : at(country)
+}
+const endsOf = (p: PlaneRow, homes: Homes): [Point, Point] => [home(homes, p.from_handle, p.from_country), home(homes, p.to_handle, p.to_country)]
 // одна кривая на полёт: и самолётик, и проявка следа
 const EASE = '.45 0 .25 1'
+const EARTH_KM = 6371
+const km = (n: number) => `${Math.round(n).toLocaleString('en')} km`
+const routeName = (key: string) => key.split('>').map(countryName).join(' → ')
 
 const fetchPlanes = (after: number): Promise<PlaneRow[]> =>
   fetch(`/api/planes?after=${after}`).then((r) => (r.ok ? r.json() : [])).catch(() => [])
@@ -34,6 +48,22 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   const [focus, setFocus] = useState<Focus>(null)
   const [panned, setPanned] = useState(false)
   const [me, setMe] = useState<string | null>(null)
+  const [locals, setLocals] = useState<Local[]>([])
+  const [myCountry, setMyCountry] = useState<string | null>(null)
+  // своя точка — из /api/me: /api/locals CDN держит минуту, а себя надо видеть сразу после сохранения
+  const [mySpot, setMySpot] = useState<Point | null | undefined>(undefined)
+  // /?spot — режим «ткни, где живёшь»: тап по своей стране сохраняет точку
+  const [placing, setPlacing] = useState(false)
+  const [hint, setHint] = useState<string | null>(null)
+  const people = useMemo(
+    () => (mySpot === undefined ? locals : locals.map((u) => (u.handle === me ? { ...u, spot: mySpot } : u))),
+    [locals, me, mySpot],
+  )
+  const homes = useMemo<Homes>(() => new Map(people.map((u) => [u.handle, u])), [people])
+  const homesRef = useRef(homes)
+  useEffect(() => {
+    homesRef.current = homes
+  }, [homes])
   const meRef = useRef<string | null>(null)
   const seq = useRef(0)
   const stage = useRef<HTMLDivElement>(null)
@@ -44,11 +74,18 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetch('/api/me')
       .then((r) => (r.ok ? r.json() : null))
-      .then((m: { handle?: string } | null) => {
+      .then((m: { handle?: string; country?: string | null; spot?: Point | null } | null) => {
         meRef.current = m?.handle ?? null
         setMe(meRef.current)
+        setMyCountry(m?.country ?? null)
+        setMySpot(m?.spot ?? null)
+        if (m?.handle && new URLSearchParams(location.search).has('spot')) setPlacing(true)
       })
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/locals').then((r) => (r.ok ? r.json() : [])).then(setLocals).catch(() => {})
   }, [])
 
   // на телефоне карта шире экрана — начинаем с середины мира
@@ -58,6 +95,60 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
     })
     return () => cancelAnimationFrame(id)
+  }, [])
+
+  // приближение: щипок на телефоне, щипок тачпада / ctrl+колесо на ПК. Карта растёт внутри .stage,
+  // а таскают её обычной прокруткой. Точка под пальцами остаётся на месте
+  useEffect(() => {
+    const el = stage.current
+    const map = svg.current
+    if (!el || !map) return
+    let k = 1
+    const zoomAt = (next: number, cx: number, cy: number) => {
+      next = Math.min(MAX_ZOOM, Math.max(1, next))
+      if (next === k) return
+      const box = el.getBoundingClientRect()
+      const x = cx - box.left
+      const y = cy - box.top
+      const f = next / k
+      const sl = el.scrollLeft
+      const st = el.scrollTop
+      k = next
+      map.style.setProperty('--zoom', String(k))
+      el.scrollLeft = (sl + x) * f - x
+      el.scrollTop = (st + y) * f - y
+    }
+    let pinch: { d: number; k: number } | null = null
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    const start = (e: TouchEvent) => {
+      if (e.touches.length === 2) pinch = { d: dist(e.touches), k }
+    }
+    const move = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return
+      e.preventDefault()
+      const [a, b] = [e.touches[0], e.touches[1]]
+      zoomAt((pinch.k * dist(e.touches)) / pinch.d, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2)
+    }
+    const end = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinch = null
+    }
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      zoomAt(k * Math.exp(-e.deltaY / 100), e.clientX, e.clientY)
+    }
+    el.addEventListener('touchstart', start, { passive: true })
+    el.addEventListener('touchmove', move, { passive: false })
+    el.addEventListener('touchend', end)
+    el.addEventListener('touchcancel', end)
+    el.addEventListener('wheel', wheel, { passive: false })
+    return () => {
+      el.removeEventListener('touchstart', start)
+      el.removeEventListener('touchmove', move)
+      el.removeEventListener('touchend', end)
+      el.removeEventListener('touchcancel', end)
+      el.removeEventListener('wheel', wheel)
+    }
   }, [])
 
   useEffect(() => {
@@ -72,11 +163,15 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     const countOf = (key: string) => routesOf(rows).find((r) => r.key === key)?.count ?? 1
 
     const fly = (p: PlaneRow, replay = false) => {
+      // в фоновой вкладке не взлетаем: CSS-анимация прозрачности там не стартует без кадров,
+      // а SMIL-полёт идёт по часам — по возвращении самолётик висит в точке прилёта
+      if (document.hidden) return false
       const route = routeKey(p)
-      if (!traffic.takeoff(route, flightSeconds(p) * 1000 + 600)) return false
+      const [a, b] = endsOf(p, homesRef.current)
+      if (!traffic.takeoff(route, flightSeconds(a, b) * 1000 + 600)) return false
       const echo = replay || Date.now() - (inked.get(route) ?? 0) < TRAIL_MS
       if (!echo) inked.set(route, Date.now())
-      setFlights((f) => [...f.slice(-(MAX_FLIGHTS - 1)), { ...p, key: ++seq.current, echo, count: countOf(route) }])
+      setFlights((f) => [...f.slice(-(MAX_FLIGHTS - 1)), { ...p, key: ++seq.current, echo, count: countOf(route), a, b }])
       return true
     }
     const take = (planes: PlaneRow[]) => {
@@ -135,6 +230,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     () => [...sky].sort((a, b) => b[1].out + b[1].in - (a[1].out + a[1].in)).slice(0, 14),
     [sky],
   )
+  const log = useMemo(() => flightLog(history, (p) => distance(...endsOf(p, homes)) * EARTH_KM), [history, homes])
   const routes = useMemo(
     () => (focus ? history.filter((p) => countryOf(p.from_country) === focus.iso || countryOf(p.to_country) === focus.iso) : []),
     [history, focus],
@@ -149,11 +245,32 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     else leaveTimer.current = setTimeout(() => setFocus((f) => (f?.pinned ? f : null)), 160)
   }, [])
   const keep = useCallback(() => clearTimeout(leaveTimer.current), [])
-  // палец и клавиатура: тап/Enter закрепляет, повтор — убирает. Клик мышью ничего не закрепляет
-  const pin = useCallback((iso: string, e: React.MouseEvent) => {
-    if ((e.nativeEvent as PointerEvent).pointerType === 'mouse') return
+  // клик, тап и Enter закрепляют карточку, повтор — убирает. pointerType у click не смотрим:
+  // iOS Safari отдаёт у тапа 'mouse', и тап по стране там молча ничего не делал
+  const pin = useCallback((iso: string) => {
     setFocus((f) => (f?.pinned && f.iso === iso ? null : { iso, pinned: true }))
   }, [])
+
+  const stopPlacing = (note: string | null) => {
+    setPlacing(false)
+    window.history.replaceState(null, '', location.pathname)
+    setHint(note)
+    if (note) setTimeout(() => setHint(null), 5000)
+  }
+  // тап в режиме выбора: экран → координаты карты → долгота/широта. Сервер ещё раз проверит, что это твоя страна
+  const place = async (iso: string | null, e: React.MouseEvent) => {
+    if (!myCountry) return
+    if (iso !== myCountry) return setHint(`That’s not ${countryName(myCountry)}. Tap inside it.`)
+    const m = svg.current?.getScreenCTM()
+    if (!m) return
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse())
+    const spot = projection.invert!([pt.x, pt.y]) as Point
+    const r = await fetch('/api/me', { method: 'POST', body: JSON.stringify({ spot }) })
+    if (!r.ok) return setHint('Couldn’t save that. Try again in a moment.')
+    const saved = ((await r.json()) as { spot: Point }).spot
+    setMySpot(saved)
+    stopPlacing('Saved. Planes sent to you now land right here.')
+  }
 
   return (
     <>
@@ -168,6 +285,9 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               <><b>{history.length}</b> recent flights</>
             )}
           </p>
+          <p className="byline">
+            built by <a href="https://x.com/_sslinNn" target="_blank" rel="noopener">@_sslinNn</a>
+          </p>
         </header>
         <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>
           {/* тап по океану убирает закреплённую карточку */}
@@ -176,7 +296,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
             viewBox={`0 0 ${W} ${H.toFixed(1)}`}
             preserveAspectRatio="xMidYMid slice"
             style={{ aspectRatio: `${W} / ${H.toFixed(1)}` }}
-            className={`map${focus ? ' focused' : ''}${me ? ' personal' : ''}`}
+            className={`map${focus ? ' focused' : ''}${me ? ' personal' : ''}${placing ? ' placing' : ''}`}
             role="img"
             aria-label="World map of replies on X flying as paper planes"
           >
@@ -199,7 +319,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               </pattern>
             </defs>
 
-            <rect width={W} height={H} fill="transparent" onClick={() => setFocus(null)} />
+            <rect width={W} height={H} fill="transparent" onClick={(e) => (placing ? place(null, e) : setFocus(null))} />
             <path d={path(graticule) ?? ''} className="graticule" />
 
             <g>
@@ -209,10 +329,10 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                   <path
                     key={i}
                     d={d}
-                    className={`land${busy ? ' busy' : ''}${focus && focus.iso === iso ? ' on' : ''}`}
-                    onPointerEnter={(e) => iso && e.pointerType === 'mouse' && hover(iso)}
+                    className={`land${busy ? ' busy' : ''}${focus && focus.iso === iso ? ' on' : ''}${placing && iso === myCountry ? ' home' : ''}`}
+                    onPointerEnter={(e) => iso && !placing && e.pointerType === 'mouse' && hover(iso)}
                     onPointerLeave={(e) => e.pointerType === 'mouse' && hover(null)}
-                    onClick={(e) => (iso ? pin(iso, e) : setFocus(null))}
+                    onClick={(e) => (placing ? place(iso, e) : iso ? pin(iso) : setFocus(null))}
                   />
                 )
               })}
@@ -222,9 +342,11 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               {landPaths.map(({ d }, i) => <path key={i} d={d} />)}
             </g>
 
+            <Locals people={people} me={me} />
+
             <g className="routes">
               {routes.map((p) => {
-                const d = arc(p)
+                const d = arc(...endsOf(p, homes))
                 return d ? <path key={p.id} d={d} /> : null
               })}
             </g>
@@ -241,7 +363,13 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
         </div>
 
         <Arrivals planes={history.slice(0, 12)} />
-        {!panned && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
+        {!panned && !placing && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
+        {(placing || hint) && (
+          <p className="placing-hint" role="status">
+            {hint ?? (myCountry ? <>Tap where you live in {countryName(myCountry)}. Everyone sees it, so roughly is fine.</> : <>Pick your country on <a href="/me">your page</a> first.</>)}
+            {placing && <button type="button" onClick={() => stopPlacing(null)}>Cancel</button>}
+          </p>
+        )}
 
         {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} svg={svg} spread={spread} onClose={() => setFocus(null)} onEnter={keep} onLeave={() => hover(null)} />}
       </div>
@@ -259,7 +387,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                   onPointerLeave={(e) => e.pointerType === 'mouse' && hover(null)}
                   onFocus={() => hover(iso)}
                   onBlur={() => hover(null)}
-                  onClick={(e) => pin(iso, e)}
+                  onClick={() => pin(iso)}
                 >
                   {countryName(iso)} <b>{s.out + s.in}</b>
                 </button>
@@ -270,6 +398,37 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           <p className="empty">The sky is quiet. Planes land here as soon as someone replies.</p>
         )}
         <p className="colophon">Hover or tap a country to meet who’s posting from there.</p>
+
+        {log.pilot && (
+          <>
+            <h2>Flight log</h2>
+            <dl className="log">
+              <div>
+                <dt>Flown so far</dt>
+                <dd><b>{km(log.km)}</b> {(log.km / (2 * Math.PI * EARTH_KM)).toFixed(1)}× around the Earth</dd>
+              </div>
+              {log.longest && (
+                <div>
+                  <dt>Longest flight</dt>
+                  <dd><b>{km(log.longest.km)}</b> @{log.longest.plane.from_handle} → @{log.longest.plane.to_handle}, {routeName(routeKey(log.longest.plane))}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Top pilot</dt>
+                <dd>
+                  <b><a href={`https://x.com/${log.pilot.handle}`} target="_blank" rel="noopener">@{log.pilot.handle}</a></b>
+                  {log.pilot.count} {log.pilot.count === 1 ? 'plane' : 'planes'}
+                </dd>
+              </div>
+              {log.route && (
+                <div>
+                  <dt>Busiest route</dt>
+                  <dd><b>×{log.route.count}</b> {routeName(log.route.key)}</dd>
+                </div>
+              )}
+            </dl>
+          </>
+        )}
       </section>
     </>
   )
@@ -341,9 +500,7 @@ export function Airframe({ model }: { model: PlaneModel }) {
   }
 }
 
-function arc(p: PlaneRow) {
-  const a = at(p.from_country)
-  const b = at(p.to_country)
+function arc(a: Point, b: Point) {
   return a === b ? null : path({ type: 'LineString', coordinates: [a, b] })
 }
 
@@ -358,10 +515,9 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
     pilot.current?.beginElement()
   }, [])
 
-  const b = at(f.to_country)
-  const [bx, by] = projection(b)!
-  const d = arc(f)
-  const dur = flightSeconds(f)
+  const [bx, by] = projection(f.b)!
+  const d = arc(f.a, f.b)
+  const dur = flightSeconds(f.a, f.b)
   // у каждого пилота своя краска
   const style = { '--dur': `${dur.toFixed(2)}s`, '--ink': userInk(f.from_handle) } as React.CSSProperties
   const mine = !!me && f.from_handle === me
@@ -408,6 +564,75 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
         )}
       </g>
       {!f.echo && <circle className="stamp" cx={bx} cy={by} r={4} />}
+    </g>
+  )
+}
+
+// местные: залогиненные пилоты стоят толпой у себя в стране. Статика — ни одной анимации на кадр
+const CROWD = 9
+// радиус аватарки в единицах карты (ширина карты — 1000), как у пилота в самолётике
+const FACE = 4.6
+function Locals({ people, me }: { people: Local[]; me: string | null }) {
+  const crowds = useMemo(() => {
+    const m = new Map<string, Local[]>()
+    for (const u of people) {
+      if (u.spot) continue
+      const list = m.get(u.country) ?? []
+      // ты — в центре своей толпы
+      if (u.handle === me) list.unshift(u)
+      else list.push(u)
+      m.set(u.country, list)
+    }
+    return [...m]
+  }, [people, me])
+
+  const face = (u: Local) => {
+    const avatar = avatarOf(u.image)
+    return (
+      <>
+        <circle className="local-shade" cx={1.2} cy={1} r={FACE + .3} />
+        {avatar ? <image href={avatar} x={-FACE} y={-FACE} width={2 * FACE} height={2 * FACE} clipPath="url(#round)" /> : <circle className="face-blank" r={FACE} />}
+        <circle className="face-ring" r={FACE + .2} />
+      </>
+    )
+  }
+  const cls = (u: Local) => `local${u.patron ? ' patron' : ''}${u.handle === me ? ' mine' : ''}`
+  const ink = (u: Local) => ({ '--ink': userInk(u.handle) }) as React.CSSProperties
+
+  return (
+    <g className="locals" aria-hidden="true">
+      {/* кто отметил, где живёт, стоит там — к нему и летят его самолётики */}
+      {people.filter((u) => u.spot).map((u) => {
+        const [x, y] = projection(u.spot!)!
+        return (
+          <g key={u.handle} className={cls(u)} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`} style={ink(u)}>
+            {face(u)}
+            {u.handle === me && <text className="local-you" y={-FACE - 2.5}>you live here</text>}
+          </g>
+        )
+      })}
+      {crowds.map(([iso, list]) => {
+        const [cx, cy] = projection(at(iso))!
+        const shown = list.slice(0, CROWD)
+        const rest = list.length - shown.length
+        // подсолнух: каждый следующий на золотом угле, чуть дальше от центра — плотно и без наложений
+        const spot = (i: number) => [1.7 * FACE * Math.sqrt(i) * Math.cos(i * 2.4), 1.7 * FACE * Math.sqrt(i) * Math.sin(i * 2.4)]
+        const edge = 1.7 * FACE * Math.sqrt(shown.length) + FACE
+        return (
+          <g key={iso} transform={`translate(${cx.toFixed(1)} ${cy.toFixed(1)})`}>
+            {shown.map((u, i) => {
+              const [x, y] = spot(i)
+              return (
+                <g key={u.handle} className={cls(u)} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`} style={ink(u)}>
+                  {face(u)}
+                </g>
+              )
+            })}
+            {rest > 0 && <text className="local-more" x={edge - FACE / 2} y={2.5}>+{rest}</text>}
+            {shown[0]?.handle === me && <text className="local-you" y={-edge - 1.5}>you live here</text>}
+          </g>
+        )
+      })}
     </g>
   )
 }

@@ -10,7 +10,7 @@ import { Arrow } from '../icons'
 
 type Me = {
   handle: string; country: string | null; image?: string | null; stamps?: Stamp[]
-  patronSince?: string | null; plane?: PlaneModel; donations?: boolean
+  patronSince?: string | null; plane?: PlaneModel; donations?: boolean; spot?: [number, number] | null
 }
 const options = countryNames()
 
@@ -53,7 +53,7 @@ export default function MePage() {
   const save = async (value: string) => {
     const country = value || null
     const r = await fetch('/api/me', { method: 'POST', body: JSON.stringify({ country }) })
-    if (r.ok) setMe({ ...me, country })
+    if (r.ok) setMe({ ...me, country, spot: null }) // новая страна — старая точка сброшена
     if (r.ok) posthog.capture('country_set', { country })
     setStatus(r.ok ? 'Saved. Your next planes take off from here.' : 'Couldn’t save that. Try again in a moment.')
   }
@@ -75,6 +75,12 @@ export default function MePage() {
           {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
         </select>
         <p className="status" role="status">{status}</p>
+        {me.country && (
+          <p className="spot-link">
+            <Link href="/?spot">{me.spot ? 'Move your spot on the map' : 'Show where you live on the map'} <Arrow /></Link>
+            <span className="fine">Planes sent to you will land right there.</span>
+          </p>
+        )}
       </div>
       <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} />
       <Support patronSince={me.patronSince ?? null} plane={me.plane ?? 'dart'} open={!!me.donations} onPlane={setPlane} />

@@ -1,4 +1,4 @@
-import { geoCentroid, geoDistance, geoGraticule10, geoPath, geoProjection } from 'd3-geo'
+import { geoCentroid, geoContains, geoDistance, geoGraticule10, geoPath, geoProjection } from 'd3-geo'
 import { feature } from 'topojson-client'
 import countries from 'i18n-iso-countries'
 import world from 'world-atlas/countries-110m.json' with { type: 'json' }
@@ -39,3 +39,7 @@ export const isoOf = (f: GeoJSON.Feature) => countries.numericToAlpha2(String(f.
 
 // радианы по большому кругу — для длительности полёта
 export const distance = (a: [number, number], b: [number, number]) => geoDistance(a, b)
+
+// точка юзера должна лежать в его стране — по тем же контурам, что нарисованы на карте
+export const inCountry = (iso: string, spot: [number, number]) =>
+  land.some((f) => isoOf(f) === iso && geoContains(f, spot))

@@ -6,7 +6,7 @@ export async function GET(req: Request) {
   after(collectIfDue)
   const since = Number(new URL(req.url).searchParams.get('after')) || 0
   const { rows } = await pool.query(
-    `select p.id, p.from_handle, p.to_handle, p.from_country, p.to_country, u.image as from_avatar
+    `select p.id, p.from_handle, p.to_handle, p.from_country, p.to_country, u.image as from_avatar, p.created_at
      from planes p
      left join account a on a."providerId" = 'twitter' and a."accountId" = p.from_x_id
      left join "user" u on u.id = a."userId"

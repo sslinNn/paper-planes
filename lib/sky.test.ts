@@ -54,3 +54,12 @@ test('userHue: stable per handle, case-insensitive, never in the map-blue band',
   assert.ok(new Set(hues).size >= 7, `hues: ${hues}`)
   for (const h of hues) assert.ok(h >= 0 && h < 360 && !(h >= 200 && h < 260), `hue ${h}`)
 })
+
+test('timeAgo: short human intervals', async () => {
+  const { timeAgo } = await import('./sky.ts')
+  const now = Date.parse('2026-09-28T12:00:00Z')
+  assert.equal(timeAgo('2026-09-28T11:59:40Z', now), 'just now')
+  assert.equal(timeAgo('2026-09-28T11:58:00Z', now), '2 min ago')
+  assert.equal(timeAgo('2026-09-28T09:00:00Z', now), '3 h ago')
+  assert.equal(timeAgo('2026-09-25T12:00:00Z', now), '3 d ago')
+})

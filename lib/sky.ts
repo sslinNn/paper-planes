@@ -1,6 +1,7 @@
 export type PlaneRow = {
   id: number; from_handle: string; to_handle: string; from_country: string | null; to_country: string | null
   from_avatar?: string | null
+  created_at?: string
 }
 export type CountrySky = { out: number; in: number; people: [string, number][]; destinations: [string, number][] }
 
@@ -68,3 +69,11 @@ export function userHue(handle: string): number {
   return hue < 200 ? hue : hue + 60
 }
 export const userInk = (handle: string) => `oklch(0.7 0.19 ${userHue(handle)})`
+
+export function timeAgo(iso: string, now = Date.now()): string {
+  const s = Math.max(0, (now - Date.parse(iso)) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`
+  return `${Math.floor(s / 86400)} d ago`
+}

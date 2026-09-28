@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { countryName } from '@/lib/country'
 import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
-import { countryOf, routeKey, routes as routesOf, summarize, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
+import { countryOf, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
 import { Close } from './icons'
 
 type Flight = PlaneRow & { key: number; echo?: boolean; count: number }
@@ -229,6 +229,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           </svg>
         </div>
 
+        <Arrivals planes={history.slice(0, 12)} />
         {!panned && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
 
         {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} svg={svg} spread={spread} onClose={() => setFocus(null)} onEnter={keep} onLeave={() => hover(null)} />}
@@ -260,6 +261,32 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
         <p className="colophon">Hover or tap a country to meet who’s posting from there.</p>
       </section>
     </>
+  )
+}
+
+// табло прилётов: бегущая строка под картой, последние реплаи — живой поток настоящих людей
+function Arrivals({ planes }: { planes: PlaneRow[] }) {
+  if (!planes.length) return null
+  const items = planes.map((p) => (
+    <li key={p.id} style={{ '--ink': userInk(p.from_handle) } as React.CSSProperties}>
+      <svg className="icon dart-icon" viewBox="-11 -10 25 17" aria-hidden="true">
+        <path d="M13 0 L-10 -9 L-4 0 Z" />
+        <path d="M13 0 L-4 0 L-9 6 Z" />
+      </svg>
+      <b>@{p.from_handle}</b> → @{p.to_handle}
+      <span className="leg">{countryName(countryOf(p.from_country))} → {countryName(countryOf(p.to_country))}</span>
+      {p.created_at && <time dateTime={p.created_at}>{timeAgo(p.created_at)}</time>}
+    </li>
+  ))
+  return (
+    <section className="arrivals" aria-label="Latest arrivals">
+      <h2>Arrivals</h2>
+      <div className="ticker">
+        {/* лента дублируется, чтобы бежать по кругу без шва */}
+        <ul>{items}</ul>
+        <ul aria-hidden="true">{items}</ul>
+      </div>
+    </section>
   )
 }
 

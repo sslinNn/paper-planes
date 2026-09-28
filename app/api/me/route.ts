@@ -13,7 +13,13 @@ export async function GET() {
   const { rows } = await pool.query(`select handle, country, "sinceId" as since_id from "user" where id = $1`, [s.user.id])
   const me = rows[0]
   if (!me.since_id) after(() => collect(s.user.id)) // новый юзер — сразу собрать его реплаи
-  return Response.json({ handle: me.handle, country: me.country })
+  // паспорт: страны, куда долетели мои самолётики, с датой первого прилёта
+  const { rows: stamps } = await pool.query(
+    `select coalesce(p.to_country, 'AQ') as country, count(*)::int as count, min(p.created_at) as first
+     from planes p join account a on a."accountId" = p.from_x_id and a."providerId" = 'twitter'
+     where a."userId" = $1
+     group by 1 order by min(p.created_at)`, [s.user.id])
+  return Response.json({ handle: me.handle, country: me.country, stamps })
 }
 
 export async function POST(req: Request) {

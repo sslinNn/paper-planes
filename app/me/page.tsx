@@ -1,10 +1,12 @@
 'use client'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { countryNames } from '@/lib/country'
+import { countryName, countryNames } from '@/lib/country'
+import { userHue, userInk } from '@/lib/sky'
 import { Arrow } from '../icons'
 
-type Me = { handle: string; country: string | null }
+type Stamp = { country: string; count: number; first: string }
+type Me = { handle: string; country: string | null; stamps?: Stamp[] }
 const options = countryNames()
 
 export default function MePage() {
@@ -43,7 +45,32 @@ export default function MePage() {
         </select>
         <p className="status" role="status">{status}</p>
       </div>
+      <Passport handle={me.handle} stamps={me.stamps ?? []} />
       <p className="lede"><Link className="tag" href="/">See your planes on the map <Arrow /></Link></p>
     </main>
+  )
+}
+
+// паспорт: штамп за каждую страну, куда долетел твой самолётик, — твоей краской
+function Passport({ handle, stamps }: { handle: string; stamps: Stamp[] }) {
+  const ink = { '--ink': userInk(handle ?? '') } as React.CSSProperties
+  return (
+    <section className="passport" style={ink} aria-labelledby="passport-title">
+      <h2 id="passport-title">Passport <span>{stamps.length} {stamps.length === 1 ? 'country' : 'countries'}</span></h2>
+      {stamps.length ? (
+        <ol className="stamps">
+          {stamps.map((st) => (
+            // наклон штампа постоянный для страны — как будто ставили от руки
+            <li key={st.country} className="stamp-mark" style={{ rotate: `${(userHue(st.country) % 15) - 7}deg` } as React.CSSProperties}>
+              <b>{countryName(st.country)}</b>
+              <span>{new Date(st.first).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <span className="times">×{st.count}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="empty">No stamps yet. Reply to someone abroad on X and your first plane will stamp it here.</p>
+      )}
+    </section>
   )
 }

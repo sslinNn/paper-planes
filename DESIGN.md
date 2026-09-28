@@ -216,3 +216,8 @@ The plane is a folded paper dart: two pink facets outlined in .5 soot, with the 
 - **Don't** set small text in blue or any text in pink on paper; neither reaches reading contrast.
 - **Don't** print the pink headline pass over the blue; the multiply turns the title navy.
 - **Don't** crop the world on wide screens; letterbox with paper margins instead.
+
+## Additions
+
+- **Arrivals ticker.** A strip under the map (never over it): blue "ARRIVALS" block, then a looping marquee of the latest 12 replies — pilot-ink dart, `@from → @to`, `Country → Country`, relative time. Pauses on hover; static and scrollable under reduced motion.
+- **Passport** (`/me`). One rubber stamp per country your planes reached: double border plus offset outline in the pilot's ink, multiply over paper, country in display caps, first-landing date, `×count`. Each country keeps a fixed tilt (−7°…7°) derived from its code.

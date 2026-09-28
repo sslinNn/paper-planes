@@ -75,7 +75,7 @@ html { scrollbar-color: var(--blue) var(--paper); }
 }
 /* подписи печатаются на бумажных полосках поверх карты */
 .lede p, .counter { margin: 0; padding: .45em .7em .5em; background: var(--paper); box-shadow: 0 1px 0 rgb(0 120 191 / .5); }
-.lede p { max-width: 44ch; text-wrap: pretty; }
+.lede p { max-width: 36ch; text-wrap: pretty; font-size: .95rem; }
 .lede strong { font-weight: 800; }
 .counter { font-weight: 700; font-variant-numeric: tabular-nums; }
 .counter b { font: 900 1.5em/1 var(--font-display), sans-serif; color: var(--blue); margin-right: .15em; }
@@ -110,7 +110,7 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .spread { position: relative; height: 100svh; min-height: 540px; overflow: hidden; border-bottom: 2px solid var(--blue); }
 .stage { position: absolute; inset: 0; }
 .map { display: block; width: 100%; height: 100%; touch-action: pan-x pan-y; }
-:root { --map-w: 100vw; --pad: clamp(14px, 2.2vw, 32px); --title: calc(var(--map-w) * .172); }
+:root { --map-w: 100vw; --pad: clamp(14px, 2.2vw, 32px); --title: clamp(3rem, calc(var(--map-w) * .062), 7rem); }
 /* заголовок, подпись и счётчик печатаются сверху, над Арктикой: низ с Антарктидой остаётся открытым */
 .overlay {
   position: absolute; top: 0; bottom: 0; left: 50%; z-index: 5;
@@ -236,7 +236,7 @@ html { scrollbar-color: var(--blue) var(--paper); }
   :root { --map-w: calc(max(100svh, 540px) * 1.468); }
 }
 @media (max-width: 640px) {
-  :root { --title: 16.6vw; }
+  :root { --title: 13vw; }
   .lede p { font-size: .95rem; }
   .counter { top: auto; bottom: var(--pad); right: var(--pad); }
   .card { left: 50% !important; top: auto !important; bottom: 8px; transform: translateX(-50%); position: fixed; width: calc(100vw - 24px); animation: none; }

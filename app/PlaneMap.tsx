@@ -93,13 +93,26 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     [history, focus],
   )
 
-  const hover = useCallback((iso: string | null) => setFocus((f) => (f?.pinned ? f : iso ? { iso, pinned: false } : null)), [])
-  const pin = useCallback((iso: string) => setFocus((f) => (f?.pinned && f.iso === iso ? null : { iso, pinned: true })), [])
+  // мышь: карточка живёт только пока курсор над страной (или над самой карточкой).
+  // уход — с короткой задержкой, чтобы успеть довести курсор до ссылок в карточке
+  const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const hover = useCallback((iso: string | null) => {
+    clearTimeout(leaveTimer.current)
+    if (iso) setFocus((f) => (f?.pinned ? f : { iso, pinned: false }))
+    else leaveTimer.current = setTimeout(() => setFocus((f) => (f?.pinned ? f : null)), 160)
+  }, [])
+  const keep = useCallback(() => clearTimeout(leaveTimer.current), [])
+  // палец и клавиатура: тап/Enter закрепляет, повтор — убирает. Клик мышью ничего не закрепляет
+  const pin = useCallback((iso: string, e: React.MouseEvent) => {
+    if ((e.nativeEvent as PointerEvent).pointerType === 'mouse') return
+    setFocus((f) => (f?.pinned && f.iso === iso ? null : { iso, pinned: true }))
+  }, [])
 
   return (
     <>
-      <div className="spread" ref={spread} onPointerLeave={() => hover(null)}>
+      <div className="spread" ref={spread}>
         <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>
+          {/* тап по океану убирает закреплённую карточку */}
           <svg
             ref={svg}
             viewBox={`0 0 ${W} ${H.toFixed(1)}`}
@@ -117,6 +130,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               </pattern>
             </defs>
 
+            <rect width={W} height={H} fill="transparent" onClick={() => setFocus(null)} />
             <path d={path(graticule) ?? ''} className="graticule" />
 
             <g>
@@ -128,7 +142,8 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                     d={d}
                     className={`land${busy ? ' busy' : ''}${focus && focus.iso === iso ? ' on' : ''}`}
                     onPointerEnter={(e) => iso && e.pointerType === 'mouse' && hover(iso)}
-                    onClick={() => iso && pin(iso)}
+                    onPointerLeave={(e) => e.pointerType === 'mouse' && hover(null)}
+                    onClick={(e) => (iso ? pin(iso, e) : setFocus(null))}
                   />
                 )
               })}
@@ -155,7 +170,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
         <p className="counter"><b>{history.length}</b> recent flights</p>
         {!panned && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
 
-        {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} svg={svg} spread={spread} onClose={() => setFocus(null)} />}
+        {focus && <CountryCard iso={focus.iso} sky={sky} pinned={focus.pinned} svg={svg} spread={spread} onClose={() => setFocus(null)} onEnter={keep} onLeave={() => hover(null)} />}
       </div>
 
       <section className="skies" aria-labelledby="skies-title">
@@ -168,8 +183,10 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                   type="button"
                   aria-pressed={focus?.pinned && focus.iso === iso ? true : false}
                   onPointerEnter={(e) => e.pointerType === 'mouse' && hover(iso)}
+                  onPointerLeave={(e) => e.pointerType === 'mouse' && hover(null)}
                   onFocus={() => hover(iso)}
-                  onClick={() => pin(iso)}
+                  onBlur={() => hover(null)}
+                  onClick={(e) => pin(iso, e)}
                 >
                   {countryName(iso)} <b>{s.out + s.in}</b>
                 </button>
@@ -242,8 +259,8 @@ function FlightView({ f, hit }: { f: Flight; hit: boolean }) {
   )
 }
 
-function CountryCard({ iso, sky, pinned, svg, spread, onClose }: {
-  iso: string; sky: Sky; pinned: boolean; onClose: () => void
+function CountryCard({ iso, sky, pinned, svg, spread, onClose, onEnter, onLeave }: {
+  iso: string; sky: Sky; pinned: boolean; onClose: () => void; onEnter: () => void; onLeave: () => void
   svg: React.RefObject<SVGSVGElement | null>; spread: React.RefObject<HTMLDivElement | null>
 }) {
   const card = useRef<HTMLElement>(null)
@@ -269,7 +286,7 @@ function CountryCard({ iso, sky, pinned, svg, spread, onClose }: {
   }, [iso, svg, spread])
 
   return (
-    <aside className="card" ref={card} style={{ visibility: 'hidden' }} aria-live="polite">
+    <aside className="card" ref={card} style={{ visibility: 'hidden' }} aria-live="polite" onPointerEnter={onEnter} onPointerLeave={(e) => e.pointerType === 'mouse' && onLeave()}>
       {pinned && <button className="close" onClick={onClose} aria-label="Close"><Close /></button>}
       <h2>{countryName(iso)}</h2>
       {iso === UNKNOWN && <p className="note">Planes from places we couldn’t pin down land here.</p>}

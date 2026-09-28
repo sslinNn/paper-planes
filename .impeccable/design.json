@@ -250,9 +250,9 @@
         "section": "colors"
       },
       {
-        "name": "The Full Measure Rule",
-        "body": "A display headline is one band that fills the measure it sits on; it does not wrap into a stacked hero.",
-        "section": "typography"
+        "name": "The Map Comes First Rule",
+        "body": "The display headline is one compact line in the top-left corner; it never grows into a band that covers the map.",
+        "section": "The display headline is one compact line in the top-left corner; it never grows into a band that covers the map."
       },
       {
         "name": "The Volume Is Scale Rule",

@@ -121,7 +121,8 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           <svg
             ref={svg}
             viewBox={`0 0 ${W} ${H.toFixed(1)}`}
-            preserveAspectRatio="xMidYMid meet"
+            preserveAspectRatio="xMidYMid slice"
+            style={{ aspectRatio: `${W} / ${H.toFixed(1)}` }}
             className={`map${focus ? ' focused' : ''}`}
             role="img"
             aria-label="World map of replies on X flying as paper planes"

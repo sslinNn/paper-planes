@@ -199,11 +199,11 @@ html { scrollbar-color: var(--blue) var(--paper); }
 }
 .status { min-height: 1.5em; margin-top: 10px; font-weight: 700; color: var(--soot); }
 
-@media (max-aspect-ratio: 5/4) {
+@media (max-aspect-ratio: 6/5) {
   /* на узком экране карта во всю высоту и шире экрана — её листают пальцем */
   .stage { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
   .stage::-webkit-scrollbar { display: none; }
-  .map { width: auto; height: 100%; aspect-ratio: 1000 / 681; max-width: none; }
+  .map { width: auto; height: 100%; max-width: none; }
   .pan-hint {
     display: block; position: absolute; left: 50%; top: 52%; z-index: 6; margin: 0;
     padding: .4em .8em; background: var(--pink); mix-blend-mode: multiply; font-weight: 800; font-size: .9rem;

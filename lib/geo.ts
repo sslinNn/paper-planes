@@ -1,20 +1,24 @@
-import { geoCentroid, geoDistance, geoGraticule10, geoMercator, geoPath } from 'd3-geo'
+import { geoCentroid, geoDistance, geoGraticule10, geoPath, geoProjection } from 'd3-geo'
 import { feature } from 'topojson-client'
 import countries from 'i18n-iso-countries'
 import world from 'world-atlas/countries-110m.json' with { type: 'json' }
 
-// плоская карта во весь экран: Меркатор от 80° с.ш. до 72° ю.ш. (полоса Антарктиды внизу остаётся)
+// плоская карта во весь экран: проекция Миллера (сплюснутый Меркатор, ~1.86:1 — почти пропорции экрана).
+// шов повёрнут в Берингов пролив (−169°): Чукотка остаётся с Россией, Аляска — с Америкой
+const miller = (λ: number, φ: number): [number, number] => [λ, 1.25 * Math.log(Math.tan(Math.PI / 4 + 0.4 * φ))]
+miller.invert = (x: number, y: number): [number, number] => [x, 2.5 * Math.atan(Math.exp(y / 1.25)) - (5 * Math.PI) / 8]
+
 export const W = 1000
-const NORTH = 80
+const NORTH = 82
 const SOUTH = -72
-export const projection = geoMercator().scale(W / (2 * Math.PI)).translate([W / 2, 0])
-const top = projection([0, NORTH])![1]
+export const projection = geoProjection(miller).rotate([-11, 0]).scale(W / (2 * Math.PI)).translate([W / 2, 0])
+const top = projection([11, NORTH])![1]
 projection.translate([W / 2, -top])
-export const H = projection([0, SOUTH])![1]
+export const H = projection([11, SOUTH])![1]
 export const path = geoPath(projection)
 
-// неизвестная страна — Антарктида, у кромки льда, чтобы было видно
-export const FOG: [number, number] = [0, -70]
+// неизвестная страна — Антарктида: кончик Антарктического полуострова, виден даже когда широкий экран режет низ
+export const FOG: [number, number] = [-60, -62]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const topo = world as any

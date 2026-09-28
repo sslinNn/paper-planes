@@ -10,7 +10,7 @@ const session = async () => auth.api.getSession({ headers: await headers() })
 export async function GET() {
   const s = await session()
   if (!s) return new Response(null, { status: 401 })
-  const { rows } = await pool.query(`select handle, country, "sinceId" as since_id from "user" where id = $1`, [s.user.id])
+  const { rows } = await pool.query(`select handle, country, image, "sinceId" as since_id from "user" where id = $1`, [s.user.id])
   const me = rows[0]
   if (!me.since_id) after(() => collect(s.user.id)) // новый юзер — сразу собрать его реплаи
   // паспорт: страны, куда долетели мои самолётики, с датой первого прилёта
@@ -19,7 +19,7 @@ export async function GET() {
      from planes p join account a on a."accountId" = p.from_x_id and a."providerId" = 'twitter'
      where a."userId" = $1
      group by 1 order by min(p.created_at)`, [s.user.id])
-  return Response.json({ handle: me.handle, country: me.country, stamps })
+  return Response.json({ handle: me.handle, country: me.country, image: me.image, stamps })
 }
 
 export async function POST(req: Request) {

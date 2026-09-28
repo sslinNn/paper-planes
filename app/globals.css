@@ -296,16 +296,84 @@ html { scrollbar-color: var(--blue) var(--paper); }
 /* ---------- /me: лист и паспорт ---------- */
 .sheet { max-width: 1100px; margin: 0 auto; padding: clamp(16px, 3vw, 40px) var(--pad) 48px; }
 .sheet .lede { display: block; margin-top: 28px; }
-.passport { margin-top: 36px; border-top: 2px solid var(--blue); padding-top: 14px; }
-.passport h2 { margin: 0 0 18px; font: 900 clamp(1.8rem, 3.4vw, 2.8rem)/.9 var(--font-display), sans-serif; text-transform: uppercase; color: var(--blue); }
-.passport h2 span { font: 700 .95rem var(--font-text), sans-serif; text-transform: none; color: var(--soot); margin-left: .5em; }
-.stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; margin: 0; padding: 0; list-style: none; }
-/* резиновый штамп: двойная рамка краской пилота, ink multiply поверх бумаги */
-.stamp-mark {
-  display: grid; justify-items: center; gap: 4px; padding: 14px 10px 12px;
-  border: 3px double var(--ink, var(--pink)); outline: 1px solid var(--ink, var(--pink)); outline-offset: 3px;
-  color: var(--soot); text-align: center; mix-blend-mode: multiply;
+
+/* ---------- паспорт-книжка ---------- */
+.passport-book { margin-top: 36px; display: grid; justify-items: center; gap: 14px; }
+.book {
+  position: relative; display: grid; grid-template-columns: 1fr 1fr;
+  width: min(100%, 940px); aspect-ratio: 1.42;
+  perspective: 2200px; touch-action: pan-y; user-select: none;
+  /* обложка книжки: тёмно-синий переплёт виден по краю */
+  padding: 10px; background: var(--blue); border-radius: 10px;
+  box-shadow: 0 18px 40px -18px rgb(29 29 27 / .45), 0 2px 0 rgb(29 29 27 / .3);
 }
-.stamp-mark b { font: 900 1.45rem/.95 var(--font-display), sans-serif; text-transform: uppercase; overflow-wrap: anywhere; }
-.stamp-mark span { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-.stamp-mark .times { font: 900 1.1rem var(--font-display), sans-serif; }
+.book.single { grid-template-columns: 1fr; width: min(100%, 460px); aspect-ratio: .71; }
+.book::after { content: ""; position: absolute; top: 10px; bottom: 10px; left: 50%; width: 2px; background: rgb(0 120 191 / .35); transform: translateX(-1px); pointer-events: none; }
+.book.single::after { display: none; }
+.half { position: relative; min-width: 0; }
+.page {
+  position: relative; height: 100%; overflow: hidden; padding: 6% 7%;
+  background-color: #f7f5ee;
+  /* защитная гильоширная сетка, как на настоящих страницах паспорта */
+  background-image:
+    repeating-radial-gradient(circle at 50% 115%, rgb(0 120 191 / .07) 0 1px, transparent 1px 7px),
+    repeating-radial-gradient(circle at 50% -15%, rgb(255 72 176 / .05) 0 1px, transparent 1px 9px);
+  box-shadow: inset 0 0 0 1px rgb(0 120 191 / .15);
+}
+.book:not(.single) .half:first-child .page { box-shadow: inset -18px 0 22px -18px rgb(29 29 27 / .25), inset 0 0 0 1px rgb(0 120 191 / .15); }
+.book:not(.single) .half:last-child .page { box-shadow: inset 18px 0 22px -18px rgb(29 29 27 / .25), inset 0 0 0 1px rgb(0 120 191 / .15); }
+.doc-head { margin: 0 0 4%; font: 800 .72rem/1 var(--font-text), sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--soot); display: flex; justify-content: space-between; }
+
+/* форзац */
+.inside-cover { display: grid; align-content: center; justify-items: center; text-align: center; gap: 6%; }
+.emblem { width: 34%; fill: var(--pink); stroke: var(--soot); stroke-width: .5; }
+.authority { margin: 0; font: 900 clamp(1.4rem, 3vw, 2.2rem)/.9 var(--font-display), sans-serif; text-transform: uppercase; color: var(--blue); }
+.request { margin: 0; max-width: 30ch; font-size: .82rem; font-weight: 500; line-height: 1.45; }
+
+/* страница данных */
+.id-grid { display: grid; grid-template-columns: 38% 1fr; gap: 6%; }
+.photo { position: relative; aspect-ratio: .78; background: var(--blue); overflow: hidden; display: grid; place-items: center; box-shadow: 3px 2px 0 var(--pink); }
+/* фото печатается дуотоном: серое изображение + синяя краска поверх */
+.photo img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.1) brightness(1.15); }
+.photo::after { content: ""; position: absolute; inset: 0; background: var(--blue); mix-blend-mode: multiply; opacity: .45; }
+.photo span { font: 900 3rem var(--font-display); color: var(--paper); }
+.identity dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-content: start; }
+.identity dl .wide { grid-column: 1 / -1; }
+.identity dt { font-size: .6rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--soot); opacity: .75; }
+.identity dd { margin: 1px 0 0; font: 900 1.05rem/1.05 var(--font-display), sans-serif; text-transform: uppercase; overflow-wrap: anywhere; }
+.identity .holder { font-size: clamp(1.3rem, 2.6vw, 1.9rem); color: var(--blue); text-transform: none; }
+.mrz { position: absolute; left: 7%; right: 7%; bottom: 5%; margin: 0; font: 600 clamp(.52rem, 1.05vw, .78rem)/1.5 ui-monospace, 'SFMono-Regular', Menlo, monospace; letter-spacing: .06em; white-space: nowrap; overflow: hidden; color: var(--soot); }
+
+/* визовые страницы */
+.visa-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4% 6%; height: 88%; margin: 0; padding: 0; list-style: none; }
+.visa-grid li { display: grid; place-items: center; }
+.visa-grid li:nth-child(odd) { transform: translate(-3%, 4%); }
+.visa-grid li:nth-child(4n+2) { transform: translate(4%, -3%); }
+.visa { width: 100%; height: auto; overflow: visible; mix-blend-mode: multiply; }
+.visa-line { fill: none; stroke: var(--visa); stroke-width: 2.2; stroke-linejoin: round; }
+.visa text { fill: var(--visa); text-anchor: middle; }
+.visa-hello { font: 900 15px var(--font-display), system-ui, sans-serif; letter-spacing: .06em; }
+.visa-name { font: 900 25px var(--font-display), sans-serif; letter-spacing: .01em; }
+.visa-small { font: 800 8.5px var(--font-text), sans-serif; letter-spacing: .08em; }
+.visa-serial { font-size: 7px; opacity: .8; }
+.blank { position: absolute; inset: 30% 12% auto; text-align: center; font-size: .85rem; font-weight: 600; opacity: .7; }
+
+/* переворот страницы */
+.leaf { position: absolute; top: 10px; bottom: 10px; width: calc(50% - 10px); transform-style: preserve-3d; z-index: 3; }
+.leaf .face { position: absolute; inset: 0; backface-visibility: hidden; }
+.leaf .back { transform: rotateY(180deg); }
+.turn-next { left: 50%; transform-origin: left center; animation: turn-next 640ms cubic-bezier(.45, 0, .25, 1) forwards; }
+.turn-prev { left: 10px; transform-origin: right center; animation: turn-prev 640ms cubic-bezier(.45, 0, .25, 1) forwards; }
+.single-next, .single-prev { left: 10px; width: calc(100% - 20px); transform-origin: left center; }
+.single-next { animation: turn-next 560ms cubic-bezier(.45, 0, .25, 1) forwards; }
+.single-prev { animation: turn-back 560ms cubic-bezier(.45, 0, .25, 1) forwards; }
+@keyframes turn-next { from { transform: rotateY(0); } to { transform: rotateY(-180deg); } }
+@keyframes turn-prev { from { transform: rotateY(0); } to { transform: rotateY(180deg); } }
+@keyframes turn-back { from { transform: rotateY(-180deg); } to { transform: rotateY(0); } }
+
+.book-nav { display: flex; align-items: center; gap: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.page-btn { display: grid; place-items: center; width: 44px; height: 44px; border: 2px solid var(--blue); background: var(--paper); color: var(--blue); font-size: 1.2rem; cursor: pointer; }
+.page-btn:hover:not(:disabled) { background: var(--pink); color: var(--soot); border-color: var(--soot); }
+.page-btn:disabled { opacity: .35; cursor: default; }
+.flip-x { display: inline-flex; transform: scaleX(-1); }
+@media (prefers-reduced-motion: reduce) { .leaf { animation-duration: 1ms !important; } }

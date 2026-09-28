@@ -58,3 +58,10 @@ alter table "user" add column if not exists spot_lat double precision;
 
 -- planes/me джойнят account по (providerId, accountId) — без индекса это seq scan на каждый опрос карты
 create index if not exists account_provider_account on account ("providerId", "accountId");
+
+-- rate limit по ключу (IP, юзер): фиксированное окно, старые строки чистит сборщик
+create table if not exists rate_limits (
+  key text primary key,
+  started timestamptz not null,
+  n int not null
+);

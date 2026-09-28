@@ -477,3 +477,22 @@ html { scrollbar-color: var(--blue) var(--paper); }
 
 /* ---------- карточка пилота /p/@handle ---------- */
 .pilot-face { width: 56px; height: 56px; border-radius: 50%; border: 2px solid var(--blue); mix-blend-mode: multiply; flex: none; }
+
+/* ---------- табло /traffic ---------- */
+.traffic h2 { margin: clamp(28px, 4vw, 44px) 0 12px; font: 900 clamp(1.6rem, 3vw, 2.4rem)/.9 var(--font-display), sans-serif; text-transform: uppercase; color: var(--blue); }
+.landing { display: grid; gap: 4px; margin-top: 28px; padding: 18px 20px; border: 2px solid var(--blue); text-decoration: none; background: rgb(255 72 176 / .12); }
+.landing:hover { background: rgb(255 72 176 / .22); }
+.landing-label { font-size: .8rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.landing-place { font: 900 clamp(2.2rem, 6vw, 4rem)/.95 var(--font-display), sans-serif; text-transform: uppercase; color: var(--blue); overflow-wrap: anywhere; }
+.landing-count { font-weight: 600; }
+.board { margin: 0; padding: 0; list-style: none; counter-reset: board; border-top: 1.5px solid var(--blue); }
+.board li { counter-increment: board; border-bottom: 1.5px solid var(--blue); }
+.board a { display: grid; grid-template-columns: 2.2em 1fr auto; grid-template-areas: "n route count" "n note count"; align-items: center; column-gap: 12px; padding: 10px 4px; text-decoration: none; }
+.board a::before { content: counter(board, decimal-leading-zero); grid-area: n; font: 900 1.1rem/1 var(--font-display), sans-serif; color: var(--pink); }
+.board a:hover { background: rgb(0 120 191 / .07); }
+.board-route { grid-area: route; font-weight: 700; overflow-wrap: anywhere; }
+.board-note { grid-area: note; font-size: .8rem; font-weight: 600; opacity: .75; }
+.board b { grid-area: count; font: 900 clamp(1.6rem, 3vw, 2.2rem)/1 var(--font-display), sans-serif; color: var(--blue); font-variant-numeric: tabular-nums; }
+.traffic .log { margin-top: clamp(28px, 4vw, 44px); }
+.traffic .empty { font-weight: 600; }
+.sheet.traffic .traffic-actions { display: flex; flex-wrap: wrap; gap: 14px 22px; margin-top: 40px; }

@@ -244,6 +244,9 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
       setMyCountry(m?.country ?? null)
       setMySpot(m?.spot ?? null)
       if (m?.handle && new URLSearchParams(location.search).has('spot')) setPlacing(true)
+      // /?country=BR — ссылка с табло /traffic: сразу открыть карточку страны
+      const linked = new URLSearchParams(location.search).get('country')
+      if (linked && /^[A-Z]{2}$/.test(linked)) setFocus(linked)
       setLocals(ls)
       // ref сразу, не дожидаясь рендера: первая волна взлетает раньше, чем обновится homes
       homesRef.current = new Map(withMySpot(ls, meRef.current, m?.spot ?? null).map((u) => [u.handle, u]))
@@ -473,7 +476,7 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
         ) : (
           <p className="empty">The sky is quiet. Planes land here as soon as someone replies.</p>
         )}
-        <p className="colophon">Tap a country to meet who’s posting from there.</p>
+        <p className="colophon">Tap a country to meet who’s posting from there. <a href="/traffic">Air traffic →</a></p>
 
         {log.pilot && (
           <>

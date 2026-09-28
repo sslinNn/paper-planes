@@ -1,6 +1,7 @@
 import { pool } from './db.ts'
 import type { PlaneRow } from './sky.ts'
 import type { Stamp } from './pilot.ts'
+import { WEEK_MIN } from './traffic.ts'
 
 // паспорт: страны, куда долетели самолётики юзера, с датой первого прилёта
 export async function stampsOf(userId: string): Promise<Stamp[]> {
@@ -16,7 +17,7 @@ export async function stampsOf(userId: string): Promise<Stamp[]> {
 }
 
 // самолётики для карты, новые сверху. where видит p (planes) и u (залогиненный отправитель)
-export async function planeRows(where: string, params: unknown[]): Promise<PlaneRow[]> {
+export async function planeRows(where: string, params: unknown[], limit = 200): Promise<PlaneRow[]> {
   const { rows } = await pool.query(
     // страна в самолётике — снимок на момент сбора. У залогиненных берём текущую: юзер мог выбрать страну позже,
     // и его старые реплаи иначе так и летали бы из Антарктиды, пока он сам стоит в Индии
@@ -30,7 +31,7 @@ export async function planeRows(where: string, params: unknown[]): Promise<Plane
      left join "user" u on u.id = a."userId"
      left join account ta on ta."providerId" = 'twitter' and ta."accountId" = p.to_x_id
      left join "user" tu on tu.id = ta."userId"
-     where ${where} order by p.id desc limit 200`, params)
+     where ${where} order by p.id desc limit ${Math.trunc(limit)}`, params)
   return rows
 }
 
@@ -41,4 +42,12 @@ export async function pilot(handle: string) {
   if (!u) return null
   const [stamps, planes] = await Promise.all([stampsOf(u.id), planeRows('u.id = $1', [u.id])])
   return { handle: u.handle as string, image: u.image as string | null, country: u.country as string | null, stamps, planes }
+}
+
+// рейсы для табло /traffic: неделя, а если за неделю пусто — всё время.
+// ponytail: потолок 5000 строк и агрегация в JS; когда самолётиков станут сотни тысяч — group by в SQL
+export async function trafficRows() {
+  const week = await planeRows(`p.created_at > now() - interval '7 days'`, [], 5000)
+  if (week.length >= WEEK_MIN) return { planes: week, window: 'week' as const }
+  return { planes: await planeRows('true', [], 5000), window: 'all' as const }
 }

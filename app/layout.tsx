@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Big_Shoulders } from "next/font/google";
 import "./globals.css";
+import { SITE } from "@/lib/site";
 
 const display = Big_Shoulders({ variable: "--font-display", subsets: ["latin"], weight: "variable" });
 const text = Archivo({ variable: "--font-text", subsets: ["latin"], weight: "variable" });
@@ -10,9 +11,7 @@ const description = "Every reply on X is a paper plane flying across the world. 
 
 // превью ссылки в X: картинка — app/opengraph-image.jpg и twitter-image.jpg (скриншот карты)
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://127.0.0.1:3000",
-  ),
+  metadataBase: new URL(SITE),
   title,
   description,
   openGraph: { title, description, siteName: title, type: "website" },

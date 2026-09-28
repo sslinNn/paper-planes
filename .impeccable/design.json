@@ -1,0 +1,291 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-28T03:35:47.836501+00:00",
+  "title": "Design System: Paper Planes",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Newsprint",
+        "canonical": "#f5f3eb",
+        "tonalRamp": [
+          "oklch(15% 0.011 95)",
+          "oklch(25% 0.011 95)",
+          "oklch(36% 0.011 95)",
+          "oklch(47% 0.011 95)",
+          "oklch(58% 0.011 95)",
+          "oklch(70% 0.011 95)",
+          "oklch(83% 0.011 95)",
+          "oklch(95% 0.011 95)"
+        ]
+      },
+      "paper-printed": {
+        "role": "neutral",
+        "displayName": "Newsprint as printed",
+        "canonical": "#ecebe4",
+        "tonalRamp": [
+          "oklch(15% 0.009 100)",
+          "oklch(25% 0.009 100)",
+          "oklch(36% 0.009 100)",
+          "oklch(47% 0.009 100)",
+          "oklch(58% 0.009 100)",
+          "oklch(70% 0.009 100)",
+          "oklch(83% 0.009 100)",
+          "oklch(95% 0.009 100)"
+        ]
+      },
+      "riso-blue": {
+        "role": "primary",
+        "displayName": "Riso Blue",
+        "canonical": "#0078bf",
+        "tonalRamp": [
+          "oklch(15% 0.15 245)",
+          "oklch(25% 0.15 245)",
+          "oklch(36% 0.15 245)",
+          "oklch(47% 0.15 245)",
+          "oklch(58% 0.15 245)",
+          "oklch(70% 0.15 245)",
+          "oklch(83% 0.15 245)",
+          "oklch(95% 0.15 245)"
+        ]
+      },
+      "fluoro-pink": {
+        "role": "secondary",
+        "displayName": "Fluorescent Pink",
+        "canonical": "#ff48b0",
+        "tonalRamp": [
+          "oklch(15% 0.24 350)",
+          "oklch(25% 0.24 350)",
+          "oklch(36% 0.24 350)",
+          "oklch(47% 0.24 350)",
+          "oklch(58% 0.24 350)",
+          "oklch(70% 0.24 350)",
+          "oklch(83% 0.24 350)",
+          "oklch(95% 0.24 350)"
+        ]
+      },
+      "soot": {
+        "role": "neutral",
+        "displayName": "Soot",
+        "canonical": "#1d1d1b",
+        "tonalRamp": [
+          "oklch(15% 0.004 106)",
+          "oklch(25% 0.004 106)",
+          "oklch(36% 0.004 106)",
+          "oklch(47% 0.004 106)",
+          "oklch(58% 0.004 106)",
+          "oklch(70% 0.004 106)",
+          "oklch(83% 0.004 106)",
+          "oklch(95% 0.004 106)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display band",
+        "purpose": "The single full-measure headline band across the map; blue with pink under-pass."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Country name on the printed card; section heads below the fold."
+      },
+      "title": {
+        "displayName": "Handle",
+        "purpose": "X handles in the card, set large."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default reading text in soot."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "The one caption on the spread, max 44ch."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Notes, card list captions, colophon."
+      }
+    },
+    "shadows": [
+      {
+        "name": "strip-hairline",
+        "value": "0 1px 0 rgb(0 120 191 / .5)",
+        "purpose": "Blue hairline under paper caption strips laid on the map. Not a shadow; a printed rule."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "All presses, stamps and state changes."
+      },
+      {
+        "name": "press-fast",
+        "value": "60ms",
+        "purpose": "Tag active press."
+      },
+      {
+        "name": "state",
+        "value": "120ms",
+        "purpose": "Tag hover, chip fill."
+      },
+      {
+        "name": "land-fill",
+        "value": "160ms",
+        "purpose": "Country flood to solid blue."
+      },
+      {
+        "name": "card-press",
+        "value": "220ms",
+        "purpose": "Card entrance: rise 6px, scale from .98."
+      },
+      {
+        "name": "stamp",
+        "value": "420ms",
+        "purpose": "Arrival ink stamp from scale 1.9."
+      },
+      {
+        "name": "flutter",
+        "value": ".42s ease-in-out infinite alternate",
+        "purpose": "Paper dart wing flutter."
+      },
+      {
+        "name": "dry",
+        "value": "60s trail / 40s stamp / 14s echo, linear to .1",
+        "purpose": "Ink drying on trails and stamps."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "portrait-pan",
+        "value": "(max-aspect-ratio: 5/4)"
+      },
+      {
+        "name": "letterbox",
+        "value": "(min-aspect-ratio: 17/10)"
+      },
+      {
+        "name": "phone",
+        "value": "(max-width: 640px)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Stamped Tag",
+      "kind": "button",
+      "refersTo": "tag-stamp",
+      "description": "The one primary action: a perforated pink stamp, tilted, multiplied onto the page.",
+      "html": "<button class=\"ds-tag\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M18.9 1.2h3.7l-8 9.2L24 22.8h-7.4l-5.8-7.6-6.6 7.6H.5l8.6-9.8L0 1.2h7.6l5.2 6.9 6.1-6.9Zm-1.3 19.4h2L6.5 3.3H4.3l13.3 17.3Z\"/></svg>Log in with X</button>",
+      "css": ".ds-tag{position:relative;display:inline-block;padding:.7em 1.1em .65em;border:0;background:var(--pink,#ff48b0);color:var(--soot,#1d1d1b);font:800 1rem/1 Archivo,system-ui,sans-serif;letter-spacing:.01em;cursor:pointer;transform:rotate(-2.5deg);mix-blend-mode:multiply;transition:transform 120ms cubic-bezier(.16,1,.3,1);-webkit-mask:radial-gradient(circle 3px at 0 50%,transparent 98%,#000) left/51% 100% no-repeat,radial-gradient(circle 3px at 100% 50%,transparent 98%,#000) right/51% 100% no-repeat;mask:radial-gradient(circle 3px at 0 50%,transparent 98%,#000) left/51% 100% no-repeat,radial-gradient(circle 3px at 100% 50%,transparent 98%,#000) right/51% 100% no-repeat}.ds-tag::after{content:'';position:absolute;inset:4px;border:1.5px dashed rgb(29 29 27/.55);pointer-events:none}.ds-tag:hover{transform:rotate(-1deg) translateY(-1px)}.ds-tag:active{transform:rotate(-1deg) scale(.96);transition-duration:60ms}.ds-tag:focus-visible{outline:2px dashed var(--pink,#ff48b0);outline-offset:5px}.ds-tag svg{width:1em;height:1em;vertical-align:-.14em;margin-right:.4em}"
+    },
+    {
+      "name": "Sky Chip",
+      "kind": "chip",
+      "refersTo": "chip-sky",
+      "description": "Busiest-skies country button; floods blue when hovered or pinned.",
+      "html": "<button class=\"ds-chip\" type=\"button\">Germany <b>12</b></button> <button class=\"ds-chip\" type=\"button\" aria-pressed=\"true\">Brazil <b>7</b></button>",
+      "css": ".ds-chip{display:inline-flex;align-items:baseline;gap:8px;border:1.5px solid var(--blue,#0078bf);background:transparent;color:var(--soot,#1d1d1b);padding:6px 12px 7px;font:700 .95rem/1.1 Archivo,system-ui,sans-serif;cursor:pointer;border-radius:0;transition:background 120ms cubic-bezier(.16,1,.3,1),color 120ms cubic-bezier(.16,1,.3,1)}.ds-chip b{font-family:'Big Shoulders',sans-serif;font-size:1.3rem;color:var(--pink,#ff48b0);font-variant-numeric:tabular-nums}.ds-chip:hover,.ds-chip[aria-pressed=true]{background:var(--blue,#0078bf);color:var(--paper,#f5f3eb)}.ds-chip:focus-visible{outline:2px dashed var(--pink,#ff48b0);outline-offset:3px}"
+    },
+    {
+      "name": "Printed Card",
+      "kind": "card",
+      "refersTo": "card-printed",
+      "description": "Country readout: paper slip with blue frame and off-register pink frame.",
+      "html": "<aside class=\"ds-card\"><h2>Germany</h2><div class=\"ds-tally\"><b>12</b><span>planes out · 4 in</span></div><h3>Flying to</h3><ul><li><span>France</span><span>5</span></li><li><span>Japan</span><span>3</span></li></ul></aside>",
+      "css": ".ds-card{position:relative;width:min(340px,86vw);padding:18px 20px 20px;background:var(--paper,#f5f3eb);color:var(--soot,#1d1d1b);border:2px solid var(--blue,#0078bf);font-family:Archivo,system-ui,sans-serif}.ds-card::after{content:'';position:absolute;inset:-2px;border:2px solid var(--pink,#ff48b0);transform:translate(2px,1.5px);mix-blend-mode:multiply;pointer-events:none}.ds-card h2{margin:0;font:900 2.4rem/.85 'Big Shoulders',sans-serif;text-transform:uppercase;color:var(--blue,#0078bf);letter-spacing:-.01em}.ds-tally{display:flex;align-items:baseline;gap:14px;margin:12px 0 4px}.ds-tally b{font:900 2.6rem/.9 'Big Shoulders',sans-serif;color:var(--pink,#ff48b0);mix-blend-mode:multiply}.ds-tally span{font-size:.85rem;font-weight:600}.ds-card h3{margin:16px 0 6px;font-size:.8rem;font-weight:800;color:var(--soot,#1d1d1b)}.ds-card ul{margin:0;padding:0;list-style:none;font-weight:600}.ds-card li{display:flex;justify-content:space-between;border-bottom:1px dashed rgb(0 120 191/.4);padding:3px 0;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Caption Strip",
+      "kind": "custom",
+      "refersTo": "strip-caption",
+      "description": "Paper strip carrying the lede or counter over the map, blue hairline beneath.",
+      "html": "<p class=\"ds-strip\">Every reply on X becomes a <strong>paper plane</strong>.</p> <p class=\"ds-strip\"><b>22</b> recent flights</p>",
+      "css": ".ds-strip{display:inline-block;margin:0 8px 0 0;padding:.45em .7em .5em;background:var(--paper,#f5f3eb);color:var(--soot,#1d1d1b);box-shadow:0 1px 0 rgb(0 120 191/.5);font:500 1.05rem/1.5 Archivo,system-ui,sans-serif;max-width:44ch}.ds-strip strong{font-weight:800}.ds-strip b{font:900 1.5em/1 'Big Shoulders',sans-serif;color:var(--blue,#0078bf);margin-right:.15em}"
+    },
+    {
+      "name": "Select Field",
+      "kind": "input",
+      "refersTo": "select-field",
+      "description": "Square paper field with blue rule and a drawn two-triangle chevron.",
+      "html": "<select class=\"ds-select\"><option>Antarctica (somewhere unknown)</option><option>Germany</option></select>",
+      "css": ".ds-select{display:block;width:100%;max-width:34rem;padding:12px 14px;font:700 1.1rem Archivo,system-ui,sans-serif;color:var(--soot,#1d1d1b);background:var(--paper,#f5f3eb);border:2px solid var(--blue,#0078bf);border-radius:0;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--blue,#0078bf) 50%),linear-gradient(135deg,var(--blue,#0078bf) 50%,transparent 50%);background-position:calc(100% - 22px) 55%,calc(100% - 15px) 55%;background-size:7px 7px;background-repeat:no-repeat}.ds-select:focus-visible{outline:2px dashed var(--pink,#ff48b0);outline-offset:3px}"
+    },
+    {
+      "name": "Display Band",
+      "kind": "custom",
+      "refersTo": "display",
+      "description": "Full-measure headline: blue ink with the pink pass printed under it, slightly off register.",
+      "html": "<h1 class=\"ds-band\" data-ink=\"Paper Planes\">Paper Planes</h1>",
+      "css": ".ds-band{position:relative;margin:0;font:900 5rem/.8 'Big Shoulders',sans-serif;letter-spacing:-.02em;text-transform:uppercase;white-space:nowrap;color:var(--blue,#0078bf);isolation:isolate}.ds-band::before{content:attr(data-ink);position:absolute;inset:0;color:var(--pink,#ff48b0);transform:translate(.014em,.01em);z-index:-1}"
+    },
+    {
+      "name": "Paper Dart",
+      "kind": "custom",
+      "refersTo": "fluoro-pink",
+      "description": "Signature plane: two pink facets, soot outline, lower facet overprinted blue to purple.",
+      "html": "<svg class=\"ds-dart\" viewBox=\"-12 -11 28 19\" width=\"84\" height=\"57\"><g class=\"ds-dart-g\"><path class=\"w\" d=\"M13 0 L-10 -9 L-4 0 Z\"/><path class=\"w\" d=\"M13 0 L-4 0 L-9 6 Z\"/><path class=\"f\" d=\"M13 0 L-4 0 L-9 6 Z\"/></g></svg>",
+      "css": ".ds-dart .w{fill:var(--pink,#ff48b0);stroke:var(--soot,#1d1d1b);stroke-width:.5;stroke-linejoin:round}.ds-dart .f{fill:var(--blue,#0078bf);opacity:.55;mix-blend-mode:multiply}.ds-dart-g{animation:ds-flutter .42s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center}@keyframes ds-flutter{from{transform:scaleY(1) rotate(-3deg)}to{transform:scaleY(.72) rotate(3deg)}}@media (prefers-reduced-motion:reduce){.ds-dart-g{animation:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Two-Ink Riso Zine",
+    "overview": "The world is printed, not rendered. Newsprint paper carries a fixed multiply grain over everything; the map is riso blue linework with a rotated halftone for land; every flight is a pass of fluorescent pink ink. There is no screen light in this system: nothing glows, nothing floats on a shadow, and nothing is dark-mode. Depth comes only from ink layering, where pink and blue print over each other in `mix-blend-mode: multiply` and misregister by a pixel or two.\n\nThe map is a full-bleed flat Mercator spread (80N to 72S), bottom-anchored so Antarctica stays open, letterboxed with paper margins above a 17:10 aspect and pannable at full height on portrait. Chrome is printed onto the spread: one full-measure condensed headline band across the Arctic, a caption and counter on paper strips, a pink stamped tag. Below the fold, the sheet continues as plain paper.\n\nDensity is low on type and high on map. The product principle \"the map is the product\" is the layout rule: everything that is not map sits on paper strips or in one card, and yields to the map.",
+    "keyCharacteristics": [
+      "Two inks (blue, pink) plus soot on newsprint; any purple is an overprint, never a picked color.",
+      "Off-register layering: second-ink passes sit 1-2px (or ~.014em) away from the first.",
+      "Square corners everywhere; edges are cut, stamped, dashed or perforated.",
+      "One condensed grotesk at 900 for display bands; one plain grotesk for reading.",
+      "Motion is ink behavior: presses, stamps, drying trails. No bounce, no glow."
+    ],
+    "rules": [
+      {
+        "name": "The Two Inks Rule",
+        "body": "Only blue and pink are inks. Purple exists solely where they overprint (the plane's fold facet: blue at .55 opacity multiplied over pink). Never pick a purple, green or any third ink.",
+        "section": "colors"
+      },
+      {
+        "name": "The Soot Reads Rule",
+        "body": "Text under display size is soot. Blue is linework and display ink (headlines, big numerals); pink is fill, never text on paper.",
+        "section": "colors"
+      },
+      {
+        "name": "The Full Measure Rule",
+        "body": "A display headline is one band that fills the measure it sits on; it does not wrap into a stacked hero.",
+        "section": "typography"
+      },
+      {
+        "name": "The Volume Is Scale Rule",
+        "body": "Quantity is shown by numeral size, not by a chart or badge.",
+        "section": "typography"
+      },
+      {
+        "name": "The Misregistration Rule",
+        "body": "Layering is shown by a second ink pass slightly out of register, printed with multiply: the pink outline ghost of the land (offset 1.6, 1.1), the card's pink frame (offset 2px, 1.5px), the headline's pink under-pass (offset .014em, .01em). The headline pass sits under the blue, because multiplying these two inks over each other yields navy and erases the blue title.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Nothing Glows Rule",
+        "body": "No light effects of any kind. If something needs emphasis, it gets more ink (solid fill, denser halftone), not light.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** print every overlapping ink layer with `mix-blend-mode: multiply`.",
+      "**Do** offset a second ink pass 1-2px (or ~.014em on display type) off the first; put pink under blue on headlines.",
+      "**Do** set reading text in soot on paper; put text on pink in soot.",
+      "**Do** keep every corner square and every edge a rule, a dash or a cut.",
+      "**Do** lay chrome on paper strips over the map rather than letting text sit on linework.",
+      "**Do** use the shared ease-out curve (`cubic-bezier(0.16, 1, 0.3, 1)`) for presses and state changes, 60-220ms.",
+      "**Do** keep hover content reachable by tap and keyboard focus."
+    ],
+    "donts": [
+      "**Don't** add a third ink or hand-pick a purple; purple only happens where blue multiplies over pink.",
+      "**Don't** use drop shadows, glows, blurs or gradients for depth.",
+      "**Don't** round corners.",
+      "**Don't** set small text in blue or any text in pink on paper; neither reaches reading contrast.",
+      "**Don't** print the pink headline pass over the blue; the multiply turns the title navy.",
+      "**Don't** crop the world on wide screens; letterbox with paper margins instead."
+    ]
+  }
+}

@@ -4,7 +4,6 @@
   --paper: #f5f3eb;
   --blue: #0078bf;
   --pink: #ff48b0;
-  --purple: #3d2b8f;
   --soot: #1d1d1b;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .11 0 0 0 0 .11 0 0 0 0 .1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -177,9 +176,9 @@ html { scrollbar-color: var(--blue) var(--paper); }
 }
 .card .note { margin: 6px 0 0; font-size: .85rem; color: var(--soot); opacity: .8; }
 .tally { display: flex; align-items: baseline; gap: 14px; margin: 12px 0 4px; font-variant-numeric: tabular-nums; }
-.tally b { font: 900 var(--vol, 2.4rem)/.9 var(--font-display), sans-serif; color: var(--pink); mix-blend-mode: multiply; }
+.tally b { font: 900 var(--vol, 2.4rem)/.9 var(--font-display), sans-serif; color: var(--blue); }
 .tally span { font-size: .85rem; font-weight: 600; }
-.card h3 { margin: 16px 0 6px; font-size: .8rem; font-weight: 800; letter-spacing: .02em; color: var(--blue); }
+.card h3 { margin: 16px 0 6px; font-size: .8rem; font-weight: 800; letter-spacing: .02em; color: var(--soot); }
 .people { display: flex; flex-wrap: wrap; gap: 0 14px; margin: 0; padding: 0; list-style: none; }
 .people a { font: 800 clamp(1.5rem, 2.2vw, 2rem)/1.05 var(--font-display), sans-serif; overflow-wrap: anywhere; }
 .people a:hover { color: var(--blue); }
@@ -198,8 +197,10 @@ html { scrollbar-color: var(--blue) var(--paper); }
   padding: 6px 12px 7px; font: 700 .95rem/1.1 var(--font-text), sans-serif; cursor: pointer;
   transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
 }
-.skies button b { font-family: var(--font-display); font-size: 1.3rem; color: var(--pink); font-variant-numeric: tabular-nums; }
-.skies button:hover, .skies button[aria-pressed="true"] { background: var(--blue); color: var(--paper); }
+.skies button b { font-family: var(--font-display); font-size: 1.3rem; color: var(--blue); font-variant-numeric: tabular-nums; }
+/* выбранная страна — розовая плашка с сажей: бумага на синем не дотягивает до 4.5:1 */
+.skies button:hover, .skies button[aria-pressed="true"] { background: var(--pink); color: var(--soot); border-color: var(--soot); }
+.skies button:hover b, .skies button[aria-pressed="true"] b { color: var(--soot); }
 .skies .empty { font-weight: 600; }
 
 .colophon { margin: 22px 0 0; font-size: .85rem; font-weight: 500; }
@@ -214,7 +215,7 @@ html { scrollbar-color: var(--blue) var(--paper); }
   background-image: linear-gradient(45deg, transparent 50%, var(--blue) 50%), linear-gradient(135deg, var(--blue) 50%, transparent 50%);
   background-position: calc(100% - 22px) 55%, calc(100% - 15px) 55%; background-size: 7px 7px; background-repeat: no-repeat;
 }
-.status { min-height: 1.5em; margin-top: 10px; font-weight: 700; color: var(--blue); }
+.status { min-height: 1.5em; margin-top: 10px; font-weight: 700; color: var(--soot); }
 
 @media (max-aspect-ratio: 5/4) {
   /* на узком экране карта во всю высоту и шире экрана — её листают пальцем */

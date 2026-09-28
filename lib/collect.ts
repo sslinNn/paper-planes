@@ -101,5 +101,8 @@ export async function collect(userId?: string): Promise<number> {
 export async function collectIfDue(): Promise<void> {
   const { rowCount } = await pool.query(
     `update collector set last_run = now() where last_run < now() - interval '5 minutes'`)
-  if (rowCount) await Promise.all([collect(), syncDonations().catch((e) => console.error('lava sync', e))])
+  if (!rowCount) return
+  // счётчик показывает только сегодня — старые дни не копим
+  await pool.query(`delete from visitors where day < current_date - 7`).catch((e) => console.error('visitors prune', e))
+  await Promise.all([collect(), syncDonations().catch((e) => console.error('lava sync', e))])
 }

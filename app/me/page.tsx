@@ -36,6 +36,7 @@ export default function MePage() {
       if (m?.patronSince || ++tries > 12) {
         clearInterval(t)
         if (m) setMe(m)
+        if (m?.patronSince) setStatus('')
       }
     }, 5000)
     return () => clearInterval(t)

@@ -181,6 +181,8 @@ export default function Passport(props: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // стрелки в поле email или в выпадашке страны не должны листать паспорт
+      if ((e.target as HTMLElement).closest?.('input, select, textarea')) return
       if (e.key === 'ArrowRight') go('next')
       if (e.key === 'ArrowLeft') go('prev')
     }

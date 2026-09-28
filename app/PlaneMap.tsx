@@ -237,6 +237,8 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
         seen.add(routeKey(p))
         pending.push(p)
       }
+      // фоновая вкладка копит очередь, а взлетать не может — по возвращении показываем только свежее
+      pending = pending.slice(-MAX_AIR * 2)
     }, POLL_MS)
     // карта не должна стоять: сначала очередь новых, потом маршруты из истории (половина — свои)
     const replay = setInterval(() => {

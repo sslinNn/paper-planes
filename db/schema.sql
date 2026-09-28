@@ -55,3 +55,6 @@ create table if not exists x_spend (
 -- смена страны её сбрасывает
 alter table "user" add column if not exists spot_lon double precision;
 alter table "user" add column if not exists spot_lat double precision;
+
+-- planes/me джойнят account по (providerId, accountId) — без индекса это seq scan на каждый опрос карты
+create index if not exists account_provider_account on account ("providerId", "accountId");

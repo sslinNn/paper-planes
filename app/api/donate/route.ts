@@ -23,9 +23,12 @@ export async function POST(req: Request) {
       amount: d.amount,
       buyerLanguage: 'EN',
       clientUtm: { utm_source: UTM_SOURCE, utm_content: s.user.id },
-      successful_return_url: `${origin}/me?thanks=1`,
-      failure_return_url: `${origin}/me`,
-      cancel_return_url: `${origin}/me`,
+      // lava.top принимает адреса возврата только по https — локально (http://127.0.0.1) их не передаём
+      ...(origin.startsWith('https://') && {
+        successful_return_url: `${origin}/me?thanks=1`,
+        failure_return_url: `${origin}/me`,
+        cancel_return_url: `${origin}/me`,
+      }),
     }),
   })
   const j = await r.json().catch(() => null)

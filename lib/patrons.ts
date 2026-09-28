@@ -4,7 +4,8 @@ export const PLANE_MODELS = ['dart', 'glider', 'swallow', 'crane'] as const
 export type PlaneModel = (typeof PLANE_MODELS)[number]
 export const isPlaneModel = (v: unknown): v is PlaneModel => PLANE_MODELS.includes(v as PlaneModel)
 
-const LIMITS = { RUB: [100, 500_000], USD: [1, 5_000], EUR: [1, 5_000] } as const
+// лимиты lava.top (проверено API): USD/EUR от 5, RUB от 100
+const LIMITS = { RUB: [100, 500_000], USD: [5, 5_000], EUR: [5, 5_000] } as const
 type Currency = keyof typeof LIMITS
 export const UTM_SOURCE = 'paper-planes'
 

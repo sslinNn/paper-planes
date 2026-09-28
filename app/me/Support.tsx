@@ -4,7 +4,7 @@ import { PLANE_MODELS, type PlaneModel } from '@/lib/patrons'
 import { Airframe } from '../PlaneMap'
 
 const NAMES: Record<PlaneModel, string> = { dart: 'Dart', glider: 'Glider', swallow: 'Swallow', crane: 'Crane' }
-const PRESETS = { USD: [3, 10, 25], EUR: [3, 10, 25], RUB: [300, 1000, 2500] } as const
+const PRESETS = { USD: [5, 10, 25], EUR: [5, 10, 25], RUB: [300, 1000, 2500] } as const
 type Currency = keyof typeof PRESETS
 
 // поддержка: донат через lava.top; донатерам — золотая фольга, своя модель и дипломатический паспорт
@@ -60,7 +60,7 @@ export default function Support({ patronSince, plane, open, onPlane }: {
             {PRESETS[currency].map((a) => (
               <button key={a} type="button" role="radio" aria-checked={amount === a} onClick={() => setAmount(a)}>{a}</button>
             ))}
-            <input aria-label="Custom amount" type="number" min={currency === 'RUB' ? 100 : 1} step="1" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+            <input aria-label="Custom amount" type="number" min={currency === 'RUB' ? 100 : 5} step="1" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
             <select aria-label="Currency" value={currency} onChange={(e) => { const c = e.target.value as Currency; setCurrency(c); setAmount(PRESETS[c][1]) }}>
               <option>USD</option><option>EUR</option><option>RUB</option>
             </select>

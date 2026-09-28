@@ -8,7 +8,7 @@ test('donationRequest: valid email, currency and amount only', () => {
   for (const bad of [
     null, 'x', {},
     { email: 'nope', amount: 5, currency: 'USD' },
-    { email: 'a@b.co', amount: 0.5, currency: 'USD' }, // меньше минимума
+    { email: 'a@b.co', amount: 3, currency: 'USD' }, // у lava.top минимум 5 $ / 5 €
     { email: 'a@b.co', amount: 50, currency: 'RUB' }, // меньше 100 ₽
     { email: 'a@b.co', amount: 5, currency: 'BTC' },
     { email: 'a@b.co', amount: 1e9, currency: 'EUR' },

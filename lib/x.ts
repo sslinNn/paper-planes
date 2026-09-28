@@ -5,6 +5,11 @@ export class Unauthorized extends Error {}
 
 const API = 'https://api.x.com/2'
 
+// X API — оплата за каждый вернувшийся ресурс. Считаем по самому дорогому тарифу (пост $0.005, юзер $0.010):
+// реальный счёт ниже — свои посты идут как owned reads по $0.001, повтор за сутки UTC не списывается
+export const X_DAILY_USD = 1
+export const xCost = (tweets: number, users: number) => tweets * 0.005 + users * 0.01
+
 async function get<T>(url: string, token: string, f: typeof fetch): Promise<T> {
   const r = await f(url, { headers: { Authorization: `Bearer ${token}` } })
   if (r.status === 429) throw new RateLimited()

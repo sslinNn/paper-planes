@@ -44,3 +44,9 @@ create table if not exists visitors (
   last_seen timestamptz not null default now(),
   primary key (day, id)
 );
+
+-- расход X API по дням (UTC, оценка сверху): сборщик встаёт, когда за сутки набежал бюджет
+create table if not exists x_spend (
+  day date primary key,
+  usd numeric not null default 0
+);

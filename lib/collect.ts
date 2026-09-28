@@ -3,12 +3,18 @@ import { syncDonations } from './donations.ts'
 import { parseCountry } from './country.ts'
 import { pool } from './db.ts'
 import { type Me, replyTargets, resolveCountries, toPlanes } from './planes.ts'
-import { getMe, getTweets, RateLimited } from './x.ts'
+import { getMe, getTweets, RateLimited, X_DAILY_USD, xCost } from './x.ts'
 
 type Row = {
   user_id: string; account_id: string; x_id: string; handle: string
   country: string | null; country_manual: boolean | null; since_id: string | null
 }
+
+const spend = (usd: number) =>
+  pool.query(`insert into x_spend (day, usd) values (current_date, $1)
+              on conflict (day) do update set usd = x_spend.usd + excluded.usd`, [usd])
+const spentToday = async () =>
+  Number((await pool.query(`select usd from x_spend where day = current_date`)).rows[0]?.usd ?? 0)
 
 const toMap = (rows: { x_id: string; country: string | null }[]) => new Map(rows.map((r) => [r.x_id, r.country]))
 
@@ -26,6 +32,7 @@ async function collectUser(r: Row): Promise<number> {
   // Better Auth не сохраняет поля с input: false из профиля — хэндл берём сами
   if (!r.handle || (!r.since_id && !r.country && !r.country_manual)) {
     const profile = await getMe(accessToken)
+    await spend(xCost(0, 1))
     me.handle = profile.username
     // страну мог выбрать сам юзер, пока мы ждали X — ручной выбор не трогаем
     const { rows } = await pool.query(
@@ -36,6 +43,7 @@ async function collectUser(r: Row): Promise<number> {
   }
 
   const { tweets, users, newestId } = await getTweets(accessToken, r.x_id, r.since_id)
+  await spend(xCost(tweets.length, users.length))
   const ids = replyTargets(me, tweets)
   let count = 0
 
@@ -77,6 +85,9 @@ export async function collect(userId?: string): Promise<number> {
   // ponytail: при 40 за 5 мин юзер обновляется раз в (юзеров / 8) мин; больше юзеров — cron и батчи побольше
   let planes = 0
   for (const r of rows) {
+    // дневной бюджет X API кончился — остальные юзеры подождут следующих суток (UTC).
+    // ponytail: перелёт максимум на один запрос (до ~$1.5 при 100 реплаях за раз), жёсткий потолок — spend cap в консоли X
+    if ((await spentToday()) >= X_DAILY_USD) break
     try {
       planes += await collectUser(r)
     } catch (e) {

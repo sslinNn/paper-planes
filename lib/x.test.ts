@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getMe, getTweets, RateLimited, Unauthorized } from './x.ts'
+import { getMe, getTweets, RateLimited, Unauthorized, X_DAILY_USD, xCost } from './x.ts'
 
 const fake = (status: number, body: unknown, seen: string[] = []) =>
   ((url: string | URL | Request) => {
@@ -51,4 +51,10 @@ test('getMe asks for username and location', async () => {
   const me = await getMe('tok', fake(200, { data: { id: '1', username: 'me', location: 'Berlin' } }, seen))
   assert.equal(new URL(seen[0]).searchParams.get('user.fields'), 'username,location')
   assert.equal(me.username, 'me')
+})
+
+test('xCost: worst-case price; a full first run fits the daily budget many times', () => {
+  assert.ok(Math.abs(xCost(20, 20) - 0.3) < 1e-9)
+  assert.ok(Math.abs(xCost(0, 1) - 0.01) < 1e-9)
+  assert.ok(xCost(20, 20) * 3 <= X_DAILY_USD)
 })

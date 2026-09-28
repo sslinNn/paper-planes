@@ -1,4 +1,7 @@
-export type PlaneRow = { id: number; from_handle: string; to_handle: string; from_country: string | null; to_country: string | null }
+export type PlaneRow = {
+  id: number; from_handle: string; to_handle: string; from_country: string | null; to_country: string | null
+  from_avatar?: string | null
+}
 export type CountrySky = { out: number; in: number; people: [string, number][]; destinations: [string, number][] }
 
 // неизвестная страна — Антарктида

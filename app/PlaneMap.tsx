@@ -26,10 +26,23 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   const [flights, setFlights] = useState<Flight[]>([])
   const [focus, setFocus] = useState<Focus>(null)
   const [panned, setPanned] = useState(false)
+  const [me, setMe] = useState<string | null>(null)
+  const meRef = useRef<string | null>(null)
   const seq = useRef(0)
   const stage = useRef<HTMLDivElement>(null)
   const svg = useRef<SVGSVGElement>(null)
   const spread = useRef<HTMLDivElement>(null)
+
+  // кто смотрит: свои самолётики крупнее и ярче, летящие к тебе — с ленточкой «→ you»
+  useEffect(() => {
+    fetch('/api/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m: { handle?: string } | null) => {
+        meRef.current = m?.handle ?? null
+        setMe(meRef.current)
+      })
+      .catch(() => {})
+  }, [])
 
   // на телефоне карта шире экрана — начинаем с середины мира
   useEffect(() => {
@@ -68,7 +81,11 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       fresh.forEach((p, i) => timers.push(setTimeout(() => fly(p), (i * POLL_MS) / fresh.length)))
     }, POLL_MS)
     // карта не должна стоять: старые самолётики перелетают снова, эхом, без нового следа
-    const replay = setInterval(() => rows.length && fly(rows[Math.floor(Math.random() * rows.length)], true), REPLAY_MS)
+    const replay = setInterval(() => {
+      const mine = meRef.current ? rows.filter((p) => p.from_handle === meRef.current || p.to_handle === meRef.current) : []
+      const pool = mine.length && Math.random() < 0.5 ? mine : rows
+      if (pool.length) fly(pool[Math.floor(Math.random() * pool.length)], true)
+    }, REPLAY_MS)
 
     return () => {
       clearInterval(poll)
@@ -114,7 +131,13 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
         {/* шапка листа: над картой, а не поверх неё — карта целиком видна всегда */}
         <header className="masthead">
           {children}
-          <p className="counter"><b>{history.length}</b> recent flights</p>
+          <p className="counter">
+            {me ? (
+              <><b>{history.filter((p) => p.from_handle === me).length}</b> of {history.length} recent flights are yours</>
+            ) : (
+              <><b>{history.length}</b> recent flights</>
+            )}
+          </p>
         </header>
         <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>
           {/* тап по океану убирает закреплённую карточку */}
@@ -123,11 +146,12 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
             viewBox={`0 0 ${W} ${H.toFixed(1)}`}
             preserveAspectRatio="xMidYMid slice"
             style={{ aspectRatio: `${W} / ${H.toFixed(1)}` }}
-            className={`map${focus ? ' focused' : ''}`}
+            className={`map${focus ? ' focused' : ''}${me ? ' personal' : ''}`}
             role="img"
             aria-label="World map of replies on X flying as paper planes"
           >
             <defs>
+              <clipPath id="round" clipPathUnits="objectBoundingBox"><circle cx=".5" cy=".5" r=".5" /></clipPath>
               <pattern id="halftone" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
                 <circle cx="2.5" cy="2.5" r=".95" fill="var(--blue)" />
               </pattern>
@@ -167,7 +191,12 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
             </g>
 
             {flights.map((f) => (
-              <FlightView key={f.key} f={f} hit={!!focus && (countryOf(f.from_country) === focus.iso || countryOf(f.to_country) === focus.iso)} />
+              <FlightView
+                key={f.key}
+                f={f}
+                me={me}
+                hit={!!focus && (countryOf(f.from_country) === focus.iso || countryOf(f.to_country) === focus.iso)}
+              />
             ))}
           </svg>
         </div>
@@ -212,9 +241,16 @@ function arc(p: PlaneRow) {
   return a === b ? null : path({ type: 'LineString', coordinates: [a, b] })
 }
 
-function FlightView({ f, hit }: { f: Flight; hit: boolean }) {
-  const motion = useRef<SVGAnimateMotionElement>(null)
-  useEffect(() => motion.current?.beginElement(), [])
+// аватарки только с домена X — url приходит из нашей базы, но лишний раз не доверяем
+const avatarOf = (url?: string | null) => (url?.startsWith('https://pbs.twimg.com/') ? url : null)
+
+function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null }) {
+  const plane = useRef<SVGAnimateMotionElement>(null)
+  const pilot = useRef<SVGAnimateMotionElement>(null)
+  useEffect(() => {
+    plane.current?.beginElement()
+    pilot.current?.beginElement()
+  }, [])
 
   const a = at(f.from_country)
   const b = at(f.to_country)
@@ -223,7 +259,13 @@ function FlightView({ f, hit }: { f: Flight; hit: boolean }) {
   // длиннее маршрут — дольше полёт
   const dur = 2 + distance(a, b) * 1.4
   const style = { '--dur': `${dur.toFixed(2)}s` } as React.CSSProperties
-  const cls = `flight${hit ? ' hit' : ''}${f.echo ? ' echo' : ''}`
+  const mine = !!me && f.from_handle === me
+  const forMe = !!me && f.to_handle === me && !mine
+  const cls = `flight${hit ? ' hit' : ''}${f.echo ? ' echo' : ''}${mine ? ' mine' : ''}${forMe ? ' for-me' : ''}`
+  // ленточка с хэндлом — у свежих, у своих и у летящих к тебе; эхо летит одной аватаркой
+  const banner = !f.echo || mine || forMe
+  const avatar = avatarOf(f.from_avatar)
+  const motion = { dur: `${dur.toFixed(2)}s`, begin: 'indefinite', fill: 'freeze' as const, path: d ?? '', keyPoints: '0;1', keyTimes: '0;1', calcMode: 'spline' as const, keySplines: EASE }
 
   // одна страна — самолётик не летит, просто штамп на месте
   if (!d) return <circle className={cls + ' stamp'} cx={bx} cy={by} r={4} style={{ '--dur': '0s' } as React.CSSProperties} />
@@ -240,23 +282,27 @@ function FlightView({ f, hit }: { f: Flight; hit: boolean }) {
         </>
       )}
       <g className="plane">
-        <animateMotion
-          ref={motion}
-          dur={`${dur.toFixed(2)}s`}
-          begin="indefinite"
-          fill="freeze"
-          rotate="auto"
-          path={d}
-          keyPoints="0;1"
-          keyTimes="0;1"
-          calcMode="spline"
-          keySplines={EASE}
-        />
+        <animateMotion ref={plane} rotate="auto" {...motion} />
         <g className="dart">
           <path className="wing" d="M13 0 L-10 -9 L-4 0 Z" />
           <path className="wing" d="M13 0 L-4 0 L-9 6 Z" />
           <path className="fold" d="M13 0 L-4 0 L-9 6 Z" />
         </g>
+      </g>
+      {/* пилот и ленточка не поворачиваются вместе с самолётиком — лицо и текст всегда ровно */}
+      <g className="pilot">
+        <animateMotion ref={pilot} rotate="0" {...motion} />
+        {avatar ? (
+          <image className="face" href={avatar} x={-5} y={-19} width={10} height={10} clipPath="url(#round)" />
+        ) : (
+          <circle className="face-blank" cy={-14} r={4.5} />
+        )}
+        <circle className="face-ring" cy={-14} r={5.2} />
+        {banner && (
+          <text className="banner" x={8} y={-11}>
+            {forMe ? `@${f.from_handle} → you` : `@${f.from_handle}`}
+          </text>
+        )}
       </g>
       {!f.echo && <circle className="stamp" cx={bx} cy={by} r={4} />}
     </g>

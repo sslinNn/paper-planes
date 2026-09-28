@@ -6,7 +6,10 @@ export async function GET(req: Request) {
   after(collectIfDue)
   const since = Number(new URL(req.url).searchParams.get('after')) || 0
   const { rows } = await pool.query(
-    `select id, from_handle, to_handle, from_country, to_country
-     from planes where id > $1 order by id desc limit 200`, [since])
+    `select p.id, p.from_handle, p.to_handle, p.from_country, p.to_country, u.image as from_avatar
+     from planes p
+     left join account a on a."providerId" = 'twitter' and a."accountId" = p.from_x_id
+     left join "user" u on u.id = a."userId"
+     where p.id > $1 order by p.id desc limit 200`, [since])
   return Response.json(rows)
 }

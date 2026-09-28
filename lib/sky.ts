@@ -26,3 +26,36 @@ export function summarize(planes: PlaneRow[]): Map<string, CountrySky> {
   }
   return new Map([...acc].map(([c, s]) => [c, { out: s.out, in: s.in, people: ranked(s.people), destinations: ranked(s.dest) }]))
 }
+
+export type Route = { key: string; lead: PlaneRow; count: number; senders: string[] }
+export const routeKey = (p: PlaneRow) => `${countryOf(p.from_country)}>${countryOf(p.to_country)}`
+
+// реплаи по одному маршруту склеиваются в один самолётик: ведёт самый свежий, на ленточке — сколько их
+export function routes(planes: PlaneRow[]): Route[] {
+  const acc = new Map<string, Route>()
+  for (const p of planes) {
+    const k = routeKey(p)
+    const r = acc.get(k)
+    if (!r) acc.set(k, { key: k, lead: p, count: 1, senders: [p.from_handle] })
+    else {
+      r.count++
+      if (!r.senders.includes(p.from_handle)) r.senders.push(p.from_handle)
+    }
+  }
+  return [...acc.values()].sort((a, b) => b.count - a.count)
+}
+
+// диспетчер неба: один самолётик на маршрут и не больше `max` в воздухе одновременно
+export class Traffic {
+  private air = new Map<string, number>()
+  private max: number
+  constructor(max: number) {
+    this.max = max
+  }
+  takeoff(route: string, durMs: number, now = Date.now()): boolean {
+    for (const [k, until] of this.air) if (until <= now) this.air.delete(k)
+    if (this.air.has(route) || this.air.size >= this.max) return false
+    this.air.set(route, now + durMs)
+    return true
+  }
+}

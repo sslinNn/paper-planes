@@ -25,3 +25,24 @@ test('a country that only receives planes still shows up', () => {
   const sky = summarize([p('a', 'RU', 'b', 'JP')])
   assert.deepEqual(sky.get('JP'), { out: 0, in: 1, people: [], destinations: [] })
 })
+
+test('routes: one entry per country pair, latest plane leads, busiest first', async () => {
+  const { routes } = await import('./sky.ts')
+  const r = routes([p('a', 'RU', 'x', 'GB'), p('b', 'RU', 'y', 'GB'), p('a', 'RU', 'z', null), p('a', 'RU', 'q', 'GB')])
+  assert.equal(r.length, 2)
+  assert.equal(r[0].key, 'RU>GB')
+  assert.equal(r[0].count, 3)
+  assert.equal(r[0].lead.from_handle, 'a') // первый в выдаче = самый свежий
+  assert.deepEqual(r[0].senders, ['a', 'b'])
+  assert.equal(r[1].key, 'RU>AQ')
+})
+
+test('sky traffic: one plane per route in the air, capped overall', async () => {
+  const { Traffic } = await import('./sky.ts')
+  const t = new Traffic(2)
+  assert.equal(t.takeoff('RU>GB', 1000, 0), true)
+  assert.equal(t.takeoff('RU>GB', 1000, 500), false) // маршрут занят
+  assert.equal(t.takeoff('RU>US', 1000, 500), true)
+  assert.equal(t.takeoff('DE>FR', 1000, 600), false) // небо полное
+  assert.equal(t.takeoff('RU>GB', 1000, 1200), true) // первый приземлился
+})

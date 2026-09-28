@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { countryName } from '@/lib/country'
 import { at, distance, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
-import { countryOf, summarize, type PlaneRow, UNKNOWN } from '@/lib/sky'
+import { countryOf, routeKey, routes as routesOf, summarize, Traffic, type PlaneRow, UNKNOWN } from '@/lib/sky'
 import { Close } from './icons'
 
-type Flight = PlaneRow & { key: number; echo?: boolean }
+type Flight = PlaneRow & { key: number; echo?: boolean; count: number }
 type Focus = { iso: string; pinned: boolean } | null
 type Sky = ReturnType<typeof summarize>
 
@@ -13,6 +13,11 @@ const MAX_FLIGHTS = 160
 const POLL_MS = 20_000
 const REPLAY_MS = 2_600
 const TRAIL_MS = 60_000
+// сколько самолётиков одновременно в небе — больше превращается в кашу
+const MAX_AIR = 10
+
+// длиннее маршрут — дольше полёт
+const flightSeconds = (p: PlaneRow) => 2 + distance(at(p.from_country), at(p.to_country)) * 1.4
 // одна кривая на полёт: и самолётик, и проявка следа
 const EASE = '.45 0 .25 1'
 
@@ -57,13 +62,20 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     let rows: PlaneRow[] = []
     let lastId = 0
     const timers: ReturnType<typeof setTimeout>[] = []
-    // один живой след на маршрут: повторы и дубли летят без следа и штампа, иначе розовый копится до красного
+    // один живой след на маршрут: повторы летят без следа и штампа, иначе розовый копится до красного
     const inked = new Map<string, number>()
+    const traffic = new Traffic(MAX_AIR)
+    // реплаи, которым не хватило места в небе, ждут своей очереди
+    let pending: PlaneRow[] = []
+    const countOf = (key: string) => routesOf(rows).find((r) => r.key === key)?.count ?? 1
+
     const fly = (p: PlaneRow, replay = false) => {
-      const route = `${p.from_country}>${p.to_country}`
+      const route = routeKey(p)
+      if (!traffic.takeoff(route, flightSeconds(p) * 1000 + 600)) return false
       const echo = replay || Date.now() - (inked.get(route) ?? 0) < TRAIL_MS
       if (!echo) inked.set(route, Date.now())
-      setFlights((f) => [...f.slice(-(MAX_FLIGHTS - 1)), { ...p, key: ++seq.current, echo }])
+      setFlights((f) => [...f.slice(-(MAX_FLIGHTS - 1)), { ...p, key: ++seq.current, echo, count: countOf(route) }])
+      return true
     }
     const take = (planes: PlaneRow[]) => {
       if (planes.length) lastId = Math.max(lastId, planes[0].id)
@@ -72,19 +84,35 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
       return planes
     }
 
-    // первая волна вылетает вразнобой, а не все разом
-    fetchPlanes(0).then((planes) =>
-      take(planes).slice(0, 14).forEach((p, i) => timers.push(setTimeout(() => fly(p), i * 280))),
-    )
+    // первая волна: по одному самолётику на маршрут, вразнобой
+    fetchPlanes(0).then((planes) => {
+      take(planes)
+      routesOf(rows)
+        .slice(0, MAX_AIR)
+        .forEach((r, i) => timers.push(setTimeout(() => fly(r.lead), i * 450)))
+    })
     const poll = setInterval(async () => {
       const fresh = take(await fetchPlanes(lastId))
-      fresh.forEach((p, i) => timers.push(setTimeout(() => fly(p), (i * POLL_MS) / fresh.length)))
+      // новые — по одному на маршрут, остальные ждут в очереди
+      const seen = new Set<string>()
+      for (const p of fresh.reverse()) {
+        if (seen.has(routeKey(p))) continue
+        seen.add(routeKey(p))
+        pending.push(p)
+      }
     }, POLL_MS)
-    // карта не должна стоять: старые самолётики перелетают снова, эхом, без нового следа
+    // карта не должна стоять: сначала очередь новых, потом маршруты из истории (половина — свои)
     const replay = setInterval(() => {
-      const mine = meRef.current ? rows.filter((p) => p.from_handle === meRef.current || p.to_handle === meRef.current) : []
-      const pool = mine.length && Math.random() < 0.5 ? mine : rows
-      if (pool.length) fly(pool[Math.floor(Math.random() * pool.length)], true)
+      const next = pending[0]
+      if (next) {
+        if (fly(next)) pending = pending.slice(1)
+        return
+      }
+      const all = routesOf(rows)
+      const me = meRef.current
+      const mine = me ? all.filter((r) => r.lead.from_handle === me || r.lead.to_handle === me) : []
+      const pool = mine.length && Math.random() < 0.5 ? mine : all
+      for (let i = 0; i < 4 && pool.length; i++) if (fly(pool[Math.floor(Math.random() * pool.length)].lead, true)) break
     }, REPLAY_MS)
 
     return () => {
@@ -252,12 +280,10 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
     pilot.current?.beginElement()
   }, [])
 
-  const a = at(f.from_country)
   const b = at(f.to_country)
   const [bx, by] = projection(b)!
   const d = arc(f)
-  // длиннее маршрут — дольше полёт
-  const dur = 2 + distance(a, b) * 1.4
+  const dur = flightSeconds(f)
   const style = { '--dur': `${dur.toFixed(2)}s` } as React.CSSProperties
   const mine = !!me && f.from_handle === me
   const forMe = !!me && f.to_handle === me && !mine
@@ -300,7 +326,7 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
         <circle className="face-ring" cy={-14} r={5.2} />
         {banner && (
           <text className="banner" x={8} y={-11}>
-            {forMe ? `@${f.from_handle} → you` : `@${f.from_handle}`}
+            {`@${f.from_handle}${f.count > 1 ? ` ×${f.count}` : ''}${forMe ? ' → you' : ''}`}
           </text>
         )}
       </g>

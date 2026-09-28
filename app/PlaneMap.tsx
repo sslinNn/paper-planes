@@ -360,7 +360,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
                   <path
                     key={i}
                     d={d}
-                    className={`land${busy ? ' busy' : ''}${focus === iso ? ' on' : ''}${placing && iso === myCountry ? ' home' : ''}`}
+                    className={`land${busy ? ' busy' : ''}${iso && focus === iso ? ' on' : ''}${iso && placing && iso === myCountry ? ' home' : ''}`}
                     onClick={(e) => (placing ? place(iso, e) : iso ? pin(iso) : setFocus(null))}
                   />
                 )

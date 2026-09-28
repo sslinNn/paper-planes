@@ -77,6 +77,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   const seq = useRef(0)
   const stage = useRef<HTMLDivElement>(null)
   const svg = useRef<SVGSVGElement>(null)
+  const canvas = useRef<HTMLDivElement>(null)
   const spread = useRef<HTMLDivElement>(null)
 
   // на телефоне карта шире экрана — начинаем с середины мира
@@ -94,7 +95,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   const zoom = useRef(1)
   const zoomAt = useCallback((next: number, cx?: number, cy?: number) => {
     const el = stage.current
-    const map = svg.current
+    const map = canvas.current
     if (!el || !map) return
     next = Math.min(MAX_ZOOM, Math.max(1, next))
     if (next === zoom.current) return
@@ -113,19 +114,37 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
   useEffect(() => {
     const el = stage.current
     if (!el) return
-    let pinch: { d: number; k: number } | null = null
+    // щипок: пока пальцы на экране, холст только масштабируется transform-ом (композитор, без раскладки
+    // и перерисовки карты); настоящий размер — один раз, когда пальцы отпустили. Иначе на телефоне всё дёргается
+    let pinch: { d: number; x: number; y: number; s: number; dx: number; dy: number } | null = null
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    const mid = (t: TouchList) => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2]
     const start = (e: TouchEvent) => {
-      if (e.touches.length === 2) pinch = { d: dist(e.touches), k: zoom.current }
+      if (e.touches.length !== 2 || !canvas.current) return
+      const [x, y] = mid(e.touches)
+      const box = el.getBoundingClientRect()
+      // точка под пальцами в координатах холста
+      canvas.current.style.transformOrigin = `${x - box.left + el.scrollLeft}px ${y - box.top + el.scrollTop}px`
+      pinch = { d: dist(e.touches), x, y, s: 1, dx: 0, dy: 0 }
     }
     const move = (e: TouchEvent) => {
-      if (!pinch || e.touches.length !== 2) return
+      if (!pinch || e.touches.length !== 2 || !canvas.current) return
       e.preventDefault()
-      const [a, b] = [e.touches[0], e.touches[1]]
-      zoomAt((pinch.k * dist(e.touches)) / pinch.d, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2)
+      const [x, y] = mid(e.touches)
+      const k = zoom.current
+      pinch.s = Math.min(MAX_ZOOM, Math.max(1, (k * dist(e.touches)) / pinch.d)) / k
+      pinch.dx = x - pinch.x
+      pinch.dy = y - pinch.y
+      canvas.current.style.transform = `translate(${pinch.dx}px, ${pinch.dy}px) scale(${pinch.s})`
     }
     const end = (e: TouchEvent) => {
-      if (e.touches.length < 2) pinch = null
+      if (!pinch || e.touches.length >= 2 || !canvas.current) return
+      const p = pinch
+      pinch = null
+      canvas.current.style.transform = ''
+      zoomAt(zoom.current * p.s, p.x, p.y)
+      el.scrollLeft -= p.dx
+      el.scrollTop -= p.dy
     }
     const wheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return
@@ -308,6 +327,8 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
     stopPlacing('Saved. Planes sent to you now land right here.')
   }
 
+  const mapCls = `map${focus ? ' focused' : ''}${me ? ' personal' : ''}${placing ? ' placing' : ''}`
+
   return (
     <>
       <div className="spread" ref={spread}>
@@ -326,27 +347,20 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
           </p>
         </header>
         <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>
+          {/* холст: два слоя с одной геометрией. Внизу статичная карта, она рисуется один раз на масштаб;
+              сверху прозрачное небо с самолётиками, его перерисовка не трогает тяжёлую карту с растром */}
+          <div className="canvas" ref={canvas} style={{ aspectRatio: `${W} / ${H.toFixed(1)}` }}>
           {/* тап по океану убирает закреплённую карточку */}
           <svg
             ref={svg}
             viewBox={`0 0 ${W} ${H.toFixed(1)}`}
             preserveAspectRatio="xMidYMid slice"
-            style={{ aspectRatio: `${W} / ${H.toFixed(1)}` }}
-            className={`map${focus ? ' focused' : ''}${me ? ' personal' : ''}${placing ? ' placing' : ''}`}
+            className={mapCls}
             role="img"
             aria-label="World map of replies on X flying as paper planes"
           >
             <defs>
               <clipPath id="round" clipPathUnits="objectBoundingBox"><circle cx=".5" cy=".5" r=".5" /></clipPath>
-              {/* золотая фольга донатеров: металлическая краска ризографа с бегущим бликом */}
-              <linearGradient id="foil" x1="-1" y1="0" x2="0" y2="0" gradientUnits="objectBoundingBox" spreadMethod="repeat">
-                <stop offset="0" stopColor="#9a6f1f" />
-                <stop offset=".45" stopColor="#d9ad4b" />
-                <stop offset=".5" stopColor="#fff1c2" />
-                <stop offset=".55" stopColor="#d9ad4b" />
-                <stop offset="1" stopColor="#9a6f1f" />
-                <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="2 0" dur="2.4s" repeatCount="indefinite" />
-              </linearGradient>
               <pattern id="halftone" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
                 <circle cx="2.5" cy="2.5" r=".95" fill="var(--blue)" />
               </pattern>
@@ -383,6 +397,21 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               })}
             </g>
 
+          </svg>
+          <svg viewBox={`0 0 ${W} ${H.toFixed(1)}`} preserveAspectRatio="xMidYMid slice" className={mapCls + ' sky'} aria-hidden="true">
+            <defs>
+              {/* свой клип у неба: ссылки на defs соседнего <svg> Safari понимает через раз */}
+              <clipPath id="round-sky" clipPathUnits="objectBoundingBox"><circle cx=".5" cy=".5" r=".5" /></clipPath>
+              {/* золотая фольга донатеров: металлическая краска ризографа с бегущим бликом */}
+              <linearGradient id="foil" x1="-1" y1="0" x2="0" y2="0" gradientUnits="objectBoundingBox" spreadMethod="repeat">
+                <stop offset="0" stopColor="#9a6f1f" />
+                <stop offset=".45" stopColor="#d9ad4b" />
+                <stop offset=".5" stopColor="#fff1c2" />
+                <stop offset=".55" stopColor="#d9ad4b" />
+                <stop offset="1" stopColor="#9a6f1f" />
+                <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="2 0" dur="2.4s" repeatCount="indefinite" />
+              </linearGradient>
+            </defs>
             {flights.map((f) => (
               <FlightView
                 key={f.key}
@@ -392,6 +421,7 @@ export default function PlaneMap({ children }: { children: ReactNode }) {
               />
             ))}
           </svg>
+          </div>
         </div>
 
         <div className="zoom">
@@ -589,7 +619,7 @@ function FlightView({ f, hit, me }: { f: Flight; hit: boolean; me: string | null
         <animateMotion rotate="0" {...motion} />
         {fade(f.echo ? .85 : 1)}
         {avatar ? (
-          <image className="face" href={avatar} x={-5} y={-19} width={10} height={10} clipPath="url(#round)" />
+          <image className="face" href={avatar} x={-5} y={-19} width={10} height={10} clipPath="url(#round-sky)" />
         ) : (
           <circle className="face-blank" cy={-14} r={4.5} />
         )}

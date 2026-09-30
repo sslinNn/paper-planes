@@ -2,11 +2,12 @@
 import { useEffect, useRef } from 'react'
 import { at } from '@/lib/geo'
 import { clampTilt, flightAt, flightSeconds, onFront, type LonLat } from '@/lib/globe'
+import { geoDistance } from 'd3-geo'
 import { countryOf, type PlaneRow } from '@/lib/sky'
 import { isPlaneModel } from '@/lib/patrons'
-import { drawArc, drawDart, drawGlobe, INK, label, type Cam } from './globe-draw'
+import { drawArc, drawDart, drawGlobe, drawLiftedArc, INK, label, lifted, type Cam } from './globe-draw'
 
-type Flight = { p: PlaneRow; a: LonLat; b: LonLat; t0: number; dur: number }
+type Flight = { p: PlaneRow; a: LonLat; b: LonLat; t0: number; dur: number; top: number }
 
 const MAX_AIR = 12
 const REPLAY_MS = 1300
@@ -110,7 +111,8 @@ export default function Globe({ planes, lead, fills }: { planes: PlaneRow[]; lea
     let replayAt = 0
     const launch = (p: PlaneRow, now: number) => {
       const a = at(p.from_country), b = at(p.to_country)
-      air.push({ p, a, b, t0: now, dur: flightSeconds(a, b) * 1000 })
+      // чем дальше перелёт, тем выше дуга над планетой
+      air.push({ p, a, b, t0: now, dur: flightSeconds(a, b) * 1000, top: 0.05 + 0.22 * (geoDistance(a, b) / Math.PI) })
     }
 
     let raf = 0
@@ -158,19 +160,30 @@ export default function Globe({ planes, lead, fills }: { planes: PlaneRow[]; lea
         const color = mine ? INK.pink : INK.blue
         const fade = p <= 1 ? 1 : Math.max(0, 1 - ((p - 1) * f.dur) / 1000 / TRAIL_FADE)
         const q = Math.min(1, p)
-        const n = Math.max(2, Math.ceil(q * 32))
-        const pts = Array.from({ length: n + 1 }, (_, k) => flightAt(f.a, f.b, (q * k) / n))
+        const n = Math.max(2, Math.ceil(q * 40))
+        // след по поднятой дуге: высота — синус по доле пути, самолётик поднимается и снижается к адресату
+        const arc = Array.from({ length: n + 1 }, (_, k) => {
+          const t = (q * k) / n
+          return lifted(cam, flightAt(f.a, f.b, t), f.top * Math.sin(Math.PI * t))
+        })
         ctx.globalAlpha = fade
-        drawArc(ctx, proj, pts, color, mine ? 2.4 : 1.6, [5, 4])
+        drawLiftedArc(ctx, arc, color, mine ? 2.4 : 1.6, [5, 4])
         ctx.globalAlpha = 1
-        const here = pts[pts.length - 1]
-        if (p <= 1 && onFront(here, center)) {
-          const ahead = flightAt(f.a, f.b, Math.min(1, q + 0.01))
-          const [x, y] = proj(here)!
-          const [x2, y2] = proj(ahead)!
+        const head = arc[arc.length - 1]
+        if (p <= 1 && head.visible) {
+          const hereLL = flightAt(f.a, f.b, q)
+          // тень самолётика на поверхности под ним
+          if (onFront(hereLL, center)) {
+            const [sx, sy] = proj(hereLL)!
+            ctx.fillStyle = 'rgb(29 29 27 / .18)'
+            ctx.beginPath()
+            ctx.ellipse(sx, sy, 5 * size, 2.4 * size, 0, 0, Math.PI * 2)
+            ctx.fill()
+          }
+          const ahead = lifted(cam, flightAt(f.a, f.b, Math.min(1, q + 0.01)), f.top * Math.sin(Math.PI * Math.min(1, q + 0.01)))
           const model = isPlaneModel(f.p.from_plane) ? f.p.from_plane : 'dart'
-          drawDart(ctx, x, y, Math.atan2(y2 - y, x2 - x), size * (mine ? 1.25 : 1), model, mine ? INK.pink : '#f5f3eb')
-          if (mine || air.length < 6) label(ctx, `@${f.p.from_handle}`, x, y - 14 * size, mine ? INK.pink : INK.soot, 10)
+          drawDart(ctx, head.x, head.y, Math.atan2(ahead.y - head.y, ahead.x - head.x), size * (mine ? 1.25 : 1), model, mine ? INK.pink : '#f5f3eb')
+          if (mine || air.length < 6) label(ctx, `@${f.p.from_handle}`, head.x, head.y - 14 * size, mine ? INK.pink : INK.soot, 10)
         } else if (p > 1 && onFront(f.b, center)) {
           // посадка: кольцо расходится по месту прилёта
           const [x, y] = proj(f.b)!

@@ -1,4 +1,4 @@
-import { geoGraticule10, geoOrthographic, geoPath, type GeoProjection } from 'd3-geo'
+import { geoGraticule10, geoOrthographic, geoPath, geoRotation, type GeoProjection } from 'd3-geo'
 import { isoOf, land } from '@/lib/geo'
 import { AIRFRAMES } from '@/lib/airframes'
 import type { PlaneModel } from '@/lib/patrons'
@@ -156,4 +156,38 @@ export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y:
   ctx.strokeText(text, x, y)
   ctx.fillStyle = color
   ctx.fillText(text, x, y)
+}
+
+const RAD = Math.PI / 180
+
+// точка на высоте h над поверхностью (доля радиуса) в той же ортографии: дуги рейсов поднимаются над планетой.
+// z — глубина (1 к зрителю, −1 за планетой); visible — над горизонтом, в том числе выглядывая из-за края
+export function lifted(cam: Cam, p: [number, number], h: number): { x: number; y: number; visible: boolean } {
+  const [l, f] = geoRotation([-cam.lon, -cam.lat])(p)
+  const cl = Math.cos(f * RAD)
+  const X = cl * Math.sin(l * RAD), Y = Math.sin(f * RAD), Z = cl * Math.cos(l * RAD)
+  const R = cam.r * (1 + h)
+  const x = cam.cx + R * X, y = cam.cy - R * Y
+  const visible = Z > 0 || Math.hypot(R * X, R * Y) > cam.r
+  return { x, y, visible }
+}
+
+// дуга рейса в объёме: полилиния по поднятым точкам, невидимые куски пропускаем
+export function drawLiftedArc(ctx: CanvasRenderingContext2D, pts: { x: number; y: number; visible: boolean }[], color: string, width: number, dash: number[]) {
+  ctx.strokeStyle = color
+  ctx.lineWidth = width
+  ctx.setLineDash(dash)
+  ctx.beginPath()
+  let on = false
+  for (const q of pts) {
+    if (!q.visible) {
+      on = false
+      continue
+    }
+    if (on) ctx.lineTo(q.x, q.y)
+    else ctx.moveTo(q.x, q.y)
+    on = true
+  }
+  ctx.stroke()
+  ctx.setLineDash([])
 }

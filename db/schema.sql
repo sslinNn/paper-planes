@@ -80,3 +80,18 @@ create table if not exists airmail (
   delivered_at timestamptz not null default now(),
   primary key (user_id, plane_id)
 );
+
+-- AIRMAIL: забеги залогиненных — опыт (ранг) и лидерборд «Today's Mail #N». Счёт считает клиент, сервер режет невозможное
+create table if not exists airmail_runs (
+  id int generated always as identity primary key,
+  user_id text not null references "user"(id) on delete cascade,
+  day int not null,
+  mode text not null,
+  score int not null,
+  delivered int not null,
+  km int not null,
+  countries text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists airmail_runs_board on airmail_runs (day, mode, score desc);
+create index if not exists airmail_runs_user on airmail_runs (user_id);

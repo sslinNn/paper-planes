@@ -1,17 +1,11 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { track } from '@/lib/track'
-import { PLANE_MODELS, type PlaneModel } from '@/lib/patrons'
-import { Airframe } from '../PlaneMap'
-
-const NAMES: Record<PlaneModel, string> = { dart: 'Dart', glider: 'Glider', swallow: 'Swallow', crane: 'Crane' }
 const PRESETS = { USD: [5, 10, 25], EUR: [5, 10, 25], RUB: [300, 1000, 2500] } as const
 type Currency = keyof typeof PRESETS
 
-// поддержка: донат через lava.top; донатерам — золотая фольга, своя модель и дипломатический паспорт
-export default function Support({ patronSince, plane, open, onPlane }: {
-  patronSince: string | null; plane: PlaneModel; open: boolean; onPlane: (p: PlaneModel) => void
-}) {
+// поддержка: донат через lava.top; донатерам — золотая фольга и дипломатический паспорт (модели открываются рангом в AIRMAIL)
+export default function Support({ patronSince, open }: { patronSince: string | null; open: boolean }) {
   const [currency, setCurrency] = useState<Currency>('USD')
   const [amount, setAmount] = useState<number>(10)
   const [email, setEmail] = useState('')
@@ -60,21 +54,10 @@ export default function Support({ patronSince, plane, open, onPlane }: {
       <h2 id="support-title">{patronSince ? 'Patron of the sky' : 'Support the sky'}</h2>
 
       {patronSince ? (
-        <>
-          <p className="support-note">Thank you. Your planes fly in gold foil and your passport is diplomatic. Pick your airframe:</p>
-          <div className="hangar" role="radiogroup" aria-label="Your plane model">
-            {PLANE_MODELS.map((m) => (
-              <button key={m} type="button" role="radio" aria-checked={plane === m} className="airframe" onClick={() => onPlane(m)}>
-                <svg viewBox="-17 -16 34 32" aria-hidden="true" className="patron"><g className="dart"><Airframe model={m} /></g></svg>
-                {NAMES[m]}
-              </button>
-            ))}
-          </div>
-        </>
+        <p className="support-note">Thank you. Your planes fly in gold foil and your passport is diplomatic.</p>
       ) : (
         <ul className="perks">
           <li><b>Gold foil</b> Your planes and trails print in metallic gold ink.</li>
-          <li><b>Your airframe</b> Fly a glider, a swallow or an origami crane instead of a dart.</li>
           <li><b>Diplomatic passport</b> Black and gold cover and a Patron of the Sky stamp.</li>
         </ul>
       )}

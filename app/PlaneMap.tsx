@@ -598,7 +598,7 @@ function FlightView({ f, hit, me, lead }: { f: Flight; hit: boolean; me: string 
         <animateMotion rotate="auto" {...motion} />
         {fade(1)}
         <g className="dart">
-          <Airframe model={f.from_patron && isPlaneModel(f.from_plane) ? f.from_plane : 'dart'} />
+          <Airframe model={isPlaneModel(f.from_plane) ? f.from_plane : 'dart'} />
         </g>
       </g>
       {/* пилот и ленточка не поворачиваются вместе с самолётиком — лицо и текст всегда ровно */}

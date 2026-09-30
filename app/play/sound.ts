@@ -107,3 +107,99 @@ export const crumple = () => [0, 90, 170, 260].forEach((ms) => setTimeout(() => 
 export const chirp = () => tone(700, 1500, 0.1, 0.14, 'triangle')
 // мало высоты — сухой писк
 export const beep = () => tone(1200, 1150, 0.06, 0.07, 'square')
+
+// ---------- музыка: генеративный lo-fi без файлов ----------
+// 84 BPM, Cmaj7 → Am7 → Fmaj7 → G7; мелодия из пентатоники по сиду дня, так что у каждого дня своя.
+// Игра управляет звучанием: к земле закрывается фильтр (глухо, как под водой), в пике хэт вдвое чаще, в грозе пэд расстраивается
+const BPM = 84
+const EIGHTH = 60 / BPM / 2
+const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12)
+const CHORDS = [[48, 52, 55, 59], [45, 48, 52, 55], [41, 45, 48, 52], [43, 47, 50, 53]] // C3 E G B · A2 C E G · F2 A C E · G2 B D F
+const PENTA = [72, 74, 76, 79, 81, 84, 86, 88] // C5 D E G A C6 D E
+
+type Music = { bus: GainNode; filter: BiquadFilterNode; timer: ReturnType<typeof setInterval>; next: number; step: number; melody: (number | null)[] }
+let music: Music | null = null
+const mood = { alt: 100, diving: false, storm: false }
+
+function voice(type: OscillatorType, freq: number, at: number, dur: number, gain: number, attack = 0.01, detune = 0) {
+  if (!ac || !music) return
+  const o = ac.createOscillator()
+  o.type = type
+  o.frequency.value = freq
+  o.detune.value = detune
+  const g = ac.createGain()
+  g.gain.setValueAtTime(0, at)
+  g.gain.linearRampToValueAtTime(gain, at + attack)
+  g.gain.exponentialRampToValueAtTime(0.0008, at + dur)
+  o.connect(g).connect(music.filter)
+  o.start(at)
+  o.stop(at + dur + 0.05)
+}
+
+function hat(at: number) {
+  if (!ac || !music) return
+  const src = ac.createBufferSource()
+  src.buffer = noise(ac, 0.05)
+  const f = ac.createBiquadFilter()
+  f.type = 'highpass'
+  f.frequency.value = 7000
+  const g = ac.createGain()
+  g.gain.setValueAtTime(0.035, at)
+  g.gain.exponentialRampToValueAtTime(0.001, at + 0.05)
+  src.connect(f).connect(g).connect(music.filter)
+  src.start(at)
+}
+
+function schedule() {
+  if (!ac || !music) return
+  while (music.next < ac.currentTime + 0.15) {
+    const at = music.next
+    const s = music.step
+    const bar = Math.floor(s / 8) % CHORDS.length
+    const chord = CHORDS[bar]
+    const beat = s % 8
+    if (beat === 0) chord.forEach((n) => voice('triangle', hz(n), at, EIGHTH * 8, 0.035, 0.35, mood.storm ? 35 : 0))
+    if (beat === 0 || beat === 4) {
+      voice('sine', hz(chord[0] - 12), at, EIGHTH * 3, 0.12, 0.01) // бас
+      voice('sine', 62, at, 0.18, 0.22, 0.005) // бочка
+    }
+    if (beat % 2 === 1 || mood.diving) hat(at)
+    const note = music.melody[s % music.melody.length]
+    if (note !== null) voice('triangle', hz(note), at, EIGHTH * 1.8, 0.045, 0.005)
+    music.next += EIGHTH
+    music.step++
+  }
+  // к земле фильтр закрывается: музыка глохнет вместе с высотой
+  music.filter.frequency.setTargetAtTime(350 + mood.alt * 55, ac.currentTime, 0.25)
+}
+
+export function startMusic(seed: number) {
+  if (!ac || music) return
+  let a = seed >>> 0
+  const r = () => ((a = (a * 1664525 + 1013904223) >>> 0) / 4294967296)
+  const melody = Array.from({ length: 32 }, () => (r() < 0.42 ? PENTA[Math.floor(r() * PENTA.length)] : null))
+  const bus = ac.createGain()
+  bus.gain.value = muted ? 0 : 0.9
+  const filter = ac.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 6000
+  filter.connect(bus).connect(ac.destination)
+  music = { bus, filter, timer: setInterval(schedule, 50), next: ac.currentTime + 0.1, step: 0, melody }
+  schedule()
+}
+
+export function setMusic(alt: number, diving: boolean, storm: boolean) {
+  mood.alt = alt
+  mood.diving = diving
+  mood.storm = storm
+  if (music && ac) music.bus.gain.setTargetAtTime(muted ? 0 : 0.9, ac.currentTime, 0.1)
+}
+
+export function stopMusic() {
+  if (!music || !ac) return
+  const m = music
+  music = null
+  clearInterval(m.timer)
+  m.bus.gain.setTargetAtTime(0, ac.currentTime, 0.4)
+  setTimeout(() => m.bus.disconnect(), 2000)
+}

@@ -2,6 +2,7 @@ import { H, land, path, projection, W } from '@/lib/geo'
 import { countryName } from '@/lib/country'
 import { active, DELIVER_R, SPEED, targetPoint, THERMAL_CHARGE, STORM_LIFE, wind, type Game, type Letter } from '@/lib/airmail'
 import { AIRFRAMES } from '@/lib/airframes'
+import type { PlaneModel } from '@/lib/patrons'
 
 export const C = { paper: '#f5f3eb', blue: '#0078bf', pink: '#ff48b0', soot: '#1d1d1b' }
 export type View = { vw: number; vh: number; dpr: number; z: number; cx: number; cy: number }
@@ -15,10 +16,15 @@ export type Ghost = { x: number; y: number; heading: number } | null
 export const STILL: Pose = { bank: 0, squash: 0, pop: 0, crash: 0 }
 
 let landPaths: { p: Path2D; b: [[number, number], [number, number]] }[] | null = null
-let plane: { wing: Path2D[]; fold: Path2D[] } | null = null
+const frames = new Map<string, { wing: Path2D[]; fold: Path2D[] }>()
 let dots: CanvasPattern | null = null
 const buildLand = () => (landPaths ??= land.map((f) => ({ p: new Path2D(path(f) ?? ''), b: path.bounds(f) })))
-const airframe = () => (plane ??= { wing: AIRFRAMES.dart.wing.map((d) => new Path2D(d)), fold: AIRFRAMES.dart.fold.map((d) => new Path2D(d)) })
+// пути модели самолётика для canvas — те же, что на SVG-карте, собираются один раз на модель
+const airframe = (model: PlaneModel = 'dart') => {
+  let f = frames.get(model)
+  if (!f) frames.set(model, (f = { wing: AIRFRAMES[model].wing.map((d) => new Path2D(d)), fold: AIRFRAMES[model].fold.map((d) => new Path2D(d)) }))
+  return f
+}
 
 // riso-растр суши, как на главной карте: синяя точка в клетке
 function halftone(ctx: CanvasRenderingContext2D) {
@@ -85,9 +91,9 @@ function drawTrail(ctx: CanvasRenderingContext2D, pts: [number, number][], z: nu
 
 function drawPlane(
   ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, scale: number,
-  style: 'shadow' | 'pilot' | 'stray' | 'ghost', pose: Pose = STILL, shadowAlpha = 0.2,
+  style: 'shadow' | 'pilot' | 'stray' | 'ghost', pose: Pose = STILL, shadowAlpha = 0.2, model: PlaneModel = 'dart',
 ) {
-  const a = airframe()
+  const a = airframe(model)
   ctx.save()
   ctx.translate(x, y)
   ctx.rotate(heading + pose.crash * pose.crash * 14)
@@ -395,7 +401,7 @@ export function drawWorld(
     }
     // тень: чем выше самолётик, тем дальше и бледнее; у земли темнеет — тревога без цифр
     const alt = g.alt * (1 - pose.crash)
-    drawPlane(ctx, g.x + alt * 0.14, g.y + alt * 0.2, g.heading, scale * 0.9, 'shadow', pose, 0.16 + (1 - alt / 100) * 0.3)
+    drawPlane(ctx, g.x + alt * 0.14, g.y + alt * 0.2, g.heading, scale * 0.9, 'shadow', pose, 0.16 + (1 - alt / 100) * 0.3, g.plane)
   }
   if (clouds) drawClouds(ctx, v, g.t)
   // самолётик над облаками; в пике — линии скорости; при падении — штопор и бумажный шарик
@@ -415,7 +421,7 @@ export function drawWorld(
       }
       ctx.stroke()
     }
-    if (pose.crash < 0.75) drawPlane(ctx, g.x, g.y, g.heading, scale, 'pilot', pose)
+    if (pose.crash < 0.75) drawPlane(ctx, g.x, g.y, g.heading, scale, 'pilot', pose, 0.2, g.plane)
     else drawBall(ctx, g.x, g.y, 3.2 * Math.min(1, (pose.crash - 0.75) * 8))
     for (const f of fx.floaters) {
       const p = 1 - f.life / f.max
@@ -460,5 +466,5 @@ export function drawResult(ctx: CanvasRenderingContext2D, vw: number, vh: number
   drawLand(ctx, z)
   drawTrail(ctx, g.trail.concat([[g.x, g.y]]), z, 3)
   for (const l of g.delivered) drawInk(ctx, l, z)
-  drawPlane(ctx, g.x, g.y, g.heading, 0.9 / z, 'pilot')
+  drawPlane(ctx, g.x, g.y, g.heading, 0.9 / z, 'pilot', STILL, 0.2, g.plane)
 }

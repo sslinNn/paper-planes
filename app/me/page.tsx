@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { countryNames } from '@/lib/country'
 import Passport, { type Stamp } from './Passport'
 import Support from './Support'
+import Hangar from './Hangar'
 import type { PlaneModel } from '@/lib/patrons'
 import { kmFlown, summary } from '@/lib/pilot'
 import { Arrow, XMark } from '../icons'
@@ -12,7 +13,7 @@ import { Arrow, XMark } from '../icons'
 type Me = {
   handle: string; country: string | null; image?: string | null; stamps?: Stamp[]
   patronSince?: string | null; plane?: PlaneModel; donations?: boolean; spot?: [number, number] | null
-  airmail?: Stamp[]
+  airmail?: Stamp[]; xp?: number
 }
 const options = countryNames()
 
@@ -114,7 +115,8 @@ export default function MePage() {
       <p className="lede"><Link className="tag" href="/play">Play Airmail: fly your replies <Arrow /></Link></p>
       <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} airmail={me.airmail ?? []} />
       <p className="fine">Jev reads each reply once to fold it into an Airmail letter; the text is never stored.</p>
-      <Support patronSince={me.patronSince ?? null} plane={me.plane ?? 'dart'} open={!!me.donations} onPlane={setPlane} />
+      <Hangar xp={me.xp ?? 0} plane={me.plane ?? 'dart'} onPlane={setPlane} />
+      <Support patronSince={me.patronSince ?? null} open={!!me.donations} />
       <p className="lede"><Link className="tag" href="/">See your planes on the map <Arrow /></Link></p>
     </main>
   )

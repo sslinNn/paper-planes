@@ -202,3 +202,20 @@ test('headwind: flying west in the westerlies is a headwind, east is a tailwind'
   g.heading = Math.PI / 2
   assert.ok(Math.abs(headwind(g)) < 0.05)
 })
+
+test('airframes fly differently: glider sinks slower than dart, crane holds up in storms', () => {
+  const dart = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  const glider = newGame([L(1, 'JP')], [], [10.4, 51.1], [], 'glider')
+  for (let i = 0; i < 20; i++) {
+    step(dart, still, 0.05, rand)
+    step(glider, still, 0.05, rand)
+  }
+  assert.ok(glider.alt > dart.alt)
+  const storm = (plane: 'dart' | 'crane') => {
+    const g = newGame([L(1, 'JP')], [], [10.4, 51.1], [], plane)
+    g.storms.push({ x: g.x, y: g.y, r: 500, born: 0, iso: null, hot: 0 })
+    for (let i = 0; i < 20; i++) step(g, still, 0.05, rand)
+    return g.alt
+  }
+  assert.ok(storm('crane') > storm('dart'))
+})

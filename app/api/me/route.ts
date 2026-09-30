@@ -7,7 +7,8 @@ import { inCountry } from '@/lib/geo'
 import { isPlaneModel } from '@/lib/patrons'
 import { pool } from '@/lib/db'
 import { stampsOf } from '@/lib/pilot-db'
-import { airmailStampsOf } from '@/lib/airmail-db'
+import { airmailStampsOf, xpOf } from '@/lib/airmail-db'
+import { unlocked } from '@/lib/ranks'
 import { syncDonations } from '@/lib/donations'
 import { limited } from '@/lib/ratelimit'
 
@@ -25,9 +26,9 @@ export async function GET(req: Request) {
      from "user" where id = $1`, [s.user.id])
   const me = rows[0]
   if (!me.since_id) after(() => collect(s.user.id)) // новый юзер — сразу собрать его реплаи
-  const [stamps, airmail] = await Promise.all([stampsOf(s.user.id), airmailStampsOf(s.user.id)])
+  const [stamps, airmail, xp] = await Promise.all([stampsOf(s.user.id), airmailStampsOf(s.user.id), xpOf(s.user.id)])
   return Response.json({
-    handle: me.handle, country: me.country, image: me.image, stamps, airmail,
+    handle: me.handle, country: me.country, image: me.image, stamps, airmail, xp,
     spot: me.spot_lon == null ? null : [me.spot_lon, me.spot_lat],
     patronSince: me.patron_since, plane: me.plane ?? 'dart',
     donations: !!(process.env.LAVA_API_KEY && process.env.LAVA_OFFER_ID),
@@ -38,12 +39,12 @@ export async function POST(req: Request) {
   const s = await session()
   if (!s) return new Response(null, { status: 401 })
   const body = await req.json().catch(() => null)
-  // модель самолётика — только для донатеров
+  // модель самолётика открывается рангом пилота в AIRMAIL (писем доставлено за все забеги)
   if (body && typeof body === 'object' && 'plane' in body) {
     if (!isPlaneModel(body.plane)) return new Response('bad plane', { status: 400 })
-    const { rowCount } = await pool.query(
-      `update "user" set plane = $1 where id = $2 and exists (select 1 from patrons where user_id = $2)`, [body.plane, s.user.id])
-    return new Response(null, { status: rowCount ? 204 : 403 })
+    if (!unlocked(await xpOf(s.user.id), body.plane)) return new Response('locked', { status: 403 })
+    await pool.query(`update "user" set plane = $1 where id = $2`, [body.plane, s.user.id])
+    return new Response(null, { status: 204 })
   }
   // точка внутри своей страны: [долгота, широта] или null — убрать
   if (body && typeof body === 'object' && 'spot' in body) {

@@ -8,20 +8,26 @@ import {
   active, COMBO_WINDOW, countryAt, headwind, newGame, select, shareText, step, tallyLine, targetPoint, TURN,
   type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
 } from '@/lib/airmail'
-import { dailyShare, rng, routeCode, type Route } from '@/lib/postcard'
+import { dailyShare, dayNumber, rng, routeCode, type Route } from '@/lib/postcard'
+import { rankOf, unlocked, type Rank } from '@/lib/ranks'
+import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
+import Hangar, { NAMES } from '../me/Hangar'
 import { authClient } from '@/lib/auth-client'
 import { track } from '@/lib/track'
 import { PassportStamp, RubberFilter } from '../me/Passport'
 import { XMark } from '../icons'
 import { C, drawResult, drawWorld, STILL, toScreen, zoomFor, type Fx, type Ghost, type Pose, type View } from './draw'
-import { beep, chirp, crumple, isMuted, rustle, setMuted, setWind, silence, thud, unlock } from './sound'
+import { beep, chirp, crumple, isMuted, rustle, setMusic, setMuted, setWind, silence, startMusic, stopMusic, thud, unlock } from './sound'
 
 export type Bag = {
   guest: boolean; handle: string | null; home: [number, number] | null; homeCountry?: string | null
   letters: Letter[]; weather: CountryWeather[]; sky?: Sky[]; bag: Record<Kind, number>
   daily?: number // «Today's Mail #N» — один мешок на всех на день
   collecting?: boolean // вошёл, а реплаи ещё не собраны
+  xp?: number // писем доставлено за все забеги — ранг пилота
+  plane?: string
 }
+type BoardRow = { handle: string; image: string | null; score: number; delivered: number; xp: number }
 type Mode = 'mine' | 'daily'
 type Phase = 'loading' | 'intro' | 'flying' | 'over'
 type Stamped = { key: number; country: string; points: number; combo: number }
@@ -99,6 +105,17 @@ const logIn = () => {
   authClient.signIn.social({ provider: 'twitter', callbackURL: '/play' })
 }
 
+// опыт гостя живёт в браузере; у залогиненного — на сервере (сумма забегов)
+const localXp = () => readNum('airmail-xp')
+const localPlane = (): PlaneModel => {
+  try {
+    const p = localStorage.getItem('airmail-plane')
+    return isPlaneModel(p) && unlocked(localXp(), p) ? p : 'dart'
+  } catch {
+    return 'dart'
+  }
+}
+
 export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const game = useRef<Game | null>(null)
@@ -123,6 +140,15 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const [dayBest, setDayBest] = useState(0)
   const [mute, setMute] = useState(() => (typeof window === 'undefined' ? false : isMuted()))
   const [touch] = useState(() => (typeof window === 'undefined' ? false : coarse()))
+  const [xp, setXp] = useState(() => (typeof window === 'undefined' ? 0 : localXp()))
+  const [plane, setPlane] = useState<PlaneModel>(() => (typeof window === 'undefined' ? 'dart' : localPlane()))
+  const [board, setBoard] = useState<BoardRow[]>([])
+  const [boardPlace, setBoardPlace] = useState<number | null>(null)
+  const [promoted, setPromoted] = useState<Rank | null>(null)
+  const xpRef = useRef(xp)
+  useEffect(() => {
+    xpRef.current = xp
+  }, [xp])
   const bag = mode === 'mine' ? mine : daily
 
   // мешок дня для всех; личный — если вошёл. Вошёл прямо из игры — ждём, пока соберутся реплаи
@@ -135,6 +161,8 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       const b = (await r.json()) as Bag & { authed?: false }
       if (stop || b.authed === false) return
       setAuthed(true)
+      setXp(b.xp ?? 0)
+      if (isPlaneModel(b.plane) && unlocked(b.xp ?? 0, b.plane)) setPlane(b.plane)
       setMine(b)
       if (b.letters.length) setMode('mine')
       else if (b.collecting && tries < 15) timer = setTimeout(() => loadMine(tries + 1).catch(() => {}), 3000)
@@ -149,6 +177,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     const ready = () => !stop && setPhase((p) => (p === 'loading' ? 'intro' : p))
     loadDaily().then(ready, ready)
     loadMine(0).catch(() => {})
+    fetch('/api/airmail/board').then((r) => r.json()).then((b: { rows: BoardRow[] }) => !stop && setBoard(b.rows)).catch(() => {})
     return () => {
       stop = true
       clearTimeout(timer)
@@ -162,9 +191,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     if (!b?.letters.length) return
     unlock()
     setMode(m)
-    const g = newGame(b.letters, b.weather, home(b), b.sky ?? [])
-    // сид дня: у всех одни и те же грозы и чужие самолётики
+    const g = newGame(b.letters, b.weather, home(b), b.sky ?? [], plane)
+    // сид дня: у всех одни и те же грозы и чужие самолётики; у каждого дня своя мелодия
     seeded.current = b.daily ? rng(b.daily * 104729) : Math.random
+    startMusic(b.daily ?? Date.now())
+    setBoardPlace(null)
+    setPromoted(null)
     game.current = g
     fx.current = { particles: [], floaters: [], rings: [] }
     pose.current = { ...STILL }
@@ -174,7 +206,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     setResult(null)
     setPhase('flying')
     track('airmail_start', { mode: m, letters: b.letters.length, day: b.daily })
-  }, [mine, daily, home])
+  }, [mine, daily, home, plane])
 
   // события игры: вес штампа, очки, звук, вибрация, обрывки бумаги, штамп в паспорт
   useEffect(() => {
@@ -298,6 +330,30 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     let lastTarget: number | null = null
     const finish = (g: Game) => {
       silence()
+      stopMusic()
+      const before = xpRef.current
+      const promote = (after: number) => {
+        setXp(after)
+        if (rankOf(after).name !== rankOf(before).name) setPromoted(rankOf(after))
+      }
+      const countries = g.delivered.map((l) => l.to_country ?? 'AQ')
+      if (authed) {
+        fetch('/api/airmail/run', {
+          method: 'POST',
+          body: JSON.stringify({ day: bag.daily ?? dayNumber(), mode: bag.daily ? 'daily' : 'mine', score: Math.round(g.score), delivered: g.delivered.length, km: Math.round(g.km), countries }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((r: { xp: number; place: number | null } | null) => {
+            if (!r) return
+            promote(r.xp)
+            setBoardPlace(r.place)
+            if (bag.daily) fetch('/api/airmail/board').then((x) => x.json()).then((b: { rows: BoardRow[] }) => setBoard(b.rows)).catch(() => {})
+          })
+          .catch(() => {})
+      } else {
+        writeNum('airmail-xp', before + g.delivered.length)
+        promote(before + g.delivered.length)
+      }
       writeNum('airmail-runs', readNum('airmail-runs') + 1)
       const score = Math.round(g.score)
       if (score > readNum('airmail-best-score')) {
@@ -382,6 +438,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
         const hint = tutorial && !g.done ? (HINTS.find(([a, b]) => g.t >= a && g.t < b)?.[2](touch) ?? '') : ''
         const comboLeft = g.combo ? Math.max(0, 1 - (g.t - g.lastDelivery) / COMBO_WINDOW) : 0
         setHud((h) => ({ ...h, alt: g.alt, letters: g.letters, target: g.target, score: g.score, combo: g.combo, comboLeft, hint, wind: headwind(g) }))
+        setMusic(g.alt, g.diving, g.inStorm)
       }
       // конец: самолётик штопором уходит вниз и сминается (или салют за пустой мешок) — и только потом итоги
       if (g.done && now - endAt > (calm ? 0 : g.won ? 900 : CRASH_MS + 400)) return finish(g)
@@ -395,7 +452,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', vis)
     }
-  }, [phase, touch, bag])
+  }, [phase, touch, bag, authed])
 
   const pick = useCallback((id: number) => {
     if (!game.current) return
@@ -445,6 +502,16 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   }
   const release = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse') input.current.mouse = false
+  }
+  const choosePlane = (m: PlaneModel) => {
+    if (!unlocked(xp, m)) return
+    setPlane(m)
+    track('plane_changed', { plane: m, from: 'airmail' })
+    if (authed) fetch('/api/me', { method: 'POST', body: JSON.stringify({ plane: m }) }).catch(() => {})
+    else
+      try {
+        localStorage.setItem('airmail-plane', m)
+      } catch {}
   }
   const diveOn = () => {
     input.current.button = true
@@ -542,6 +609,8 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           {authed && !ownReady && mine?.collecting && <p className="fine am-wait">Reading your replies on X… your mailbag lands in a few seconds.</p>}
           {authed && !ownReady && !mine?.collecting && <p className="fine">No replies of yours in the sky yet. Reply to someone on X, then come back. Meanwhile, fly today’s mail.</p>}
           {daily && !daily.letters.length && !ownReady && <p className="fine">No letters in the sky yet. Come back when the planes are flying.</p>}
+          <Hangar xp={xp} plane={plane} onPlane={choosePlane} compact />
+          {!!board.length && <p className="fine am-leader">Today’s leader: <b>@{board[0].handle}</b> · {fmt(board[0].score)}</p>}
           {!!dayBest && <p className="fine">Your best today: {fmt(dayBest)} · your ghost flies with you</p>}
           <p className="fine am-by">A game by <Link href="/">Paper Planes</Link>, the live map of replies on X. Today’s mail is the same sky for everyone.</p>
         </div>
@@ -570,7 +639,26 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
               <strong>{unique.length}</strong> {unique.length === 1 ? 'country' : 'countries'} ·{' '}
               <strong>{fmt(g.km)}</strong> km{g.caught ? <> · <strong>{g.caught}</strong> caught</> : null}
             </p>
+            {promoted && (
+              <p className="am-promo">Promoted: <b>{promoted.name}</b> · {NAMES[promoted.plane]} unlocked</p>
+            )}
+            <p className="fine">{rankOf(xp).name} · {xp} {xp === 1 ? 'letter' : 'letters'} delivered{boardPlace && bag.daily ? <> · <b>#{boardPlace} today</b></> : null}</p>
             {line && <p className="am-jev">Jev read {bag.daily ? 'this' : 'your'} mailbag: {line}</p>}
+            {bag.daily && !!board.length && (
+              <ol className="am-board" aria-label={`${dayLabel} leaderboard`}>
+                {board.slice(0, 5).map((r, i) => (
+                  <li key={r.handle} className={r.handle === mine?.handle ? 'me' : ''}>
+                    <span className="n">{i + 1}</span>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- аватарка X, оптимизатор не нужен */}
+                    {r.image?.startsWith('https://pbs.twimg.com/') ? <img src={r.image} alt="" width={24} height={24} /> : <span className="av" />}
+                    <a href={`https://x.com/${r.handle}`} target="_blank" rel="noopener">@{r.handle}</a>
+                    <span className="rk">{rankOf(r.xp).name}</span>
+                    <b>{fmt(r.score)}</b>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {bag.daily && !authed && <p className="fine">Log in with X to get on today’s board.</p>}
             {!!unique.length && (
               <ul className="am-stamps">
                 {unique.slice(0, 6).map((c) => (

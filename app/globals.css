@@ -596,3 +596,35 @@ html { scrollbar-color: var(--blue) var(--paper); }
 @keyframes am-wait { from { opacity: .55; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .am-wait { animation: none; } }
 .am-challenge { margin: 0; padding: 8px 10px; background: var(--pink); font-weight: 700; rotate: -1deg; }
+/* ангар: ранг пилота открывает модели */
+.hangar-box { display: grid; gap: 10px; margin-block: 18px; }
+.hangar-box .rank { margin: 0; font-weight: 600; }
+.hangar-box .rank b { font-family: var(--font-display); font-size: 1.5rem; font-weight: 900; color: var(--blue); }
+.hangar-box .to-next { color: var(--soot); }
+.rank-bar { display: block; height: 6px; border: 1.5px solid var(--soot); background: linear-gradient(90deg, var(--pink) calc(var(--p, 0) * 100%), var(--paper) 0); }
+.airframe small { font: 600 .75rem/1.25 var(--font-text); text-align: center; }
+.airframe[aria-checked="true"] { background: var(--pink); }
+.airframe:disabled { cursor: not-allowed; color: var(--soot); border-style: dashed; }
+.airframe:disabled svg { opacity: .35; filter: grayscale(1); }
+.hangar-box.compact .airframe { width: 84px; padding: 8px 4px; }
+.hangar-box.compact .airframe svg { width: 44px; height: 40px; }
+.hangar-box .airframe { border-color: var(--soot); }
+.hangar-box .airframe .wing { fill: var(--pink); stroke: var(--soot); }
+.hangar-box .airframe[aria-checked="true"] { background: var(--paper); border-color: var(--pink); box-shadow: 3px 2px 0 var(--pink); }
+.am-promo { margin: 0; padding: 7px 10px; background: var(--blue); color: var(--paper); font-weight: 700; rotate: -1.5deg; }
+.am-promo b { font-family: var(--font-display); font-size: 1.3rem; letter-spacing: .02em; }
+.am-leader b { color: var(--blue); }
+.am-board { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; width: 100%; }
+.am-board li { display: grid; grid-template-columns: 1.4em 24px 1fr auto auto; align-items: center; gap: 8px; padding: 4px 6px; border-bottom: 1px dashed rgb(29 29 27 / .35); font-size: .85rem; }
+.am-board li.me { background: var(--pink); }
+.am-board .n { font: 900 1.1rem var(--font-display); color: var(--blue); }
+.am-board img, .am-board .av { width: 24px; height: 24px; border-radius: 50%; background: var(--blue); }
+.am-board a { color: inherit; font-weight: 800; }
+.am-board .rk { font-weight: 600; }
+.am-board b { font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .am-intro .hangar-box .airframe small { display: none; }
+  .am-intro .hangar { flex-wrap: nowrap; gap: 6px; }
+  .am-intro .hangar-box .airframe { width: auto; flex: 1; min-width: 0; }
+  .am-intro { max-height: calc(100dvh - 32px); overflow: auto; }
+}

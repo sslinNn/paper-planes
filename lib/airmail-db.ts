@@ -5,6 +5,7 @@ import { isKind } from './letters.ts'
 import type { PlaneRow } from './sky.ts'
 import type { Stamp } from './pilot.ts'
 import { dayNumber, rng } from './postcard.ts'
+import type { Run } from './ranks.ts'
 
 const toLetter = (p: PlaneRow): Letter => ({
   id: p.id, from_handle: p.from_handle, to_handle: p.to_handle, to_country: p.to_country, from_country: p.from_country,
@@ -52,17 +53,20 @@ export async function dailyBag() {
 // залогиненный: его реплаи и реплаи ему, 20 свежих
 export async function userBag(userId: string) {
   const { rows: [u] } = await pool.query(
-    `select u.handle, u.country, u.spot_lon, u.spot_lat, u."sinceId" as since_id, a."accountId" as x_id
+    `select u.handle, u.country, u.spot_lon, u.spot_lat, u."sinceId" as since_id, u.plane, a."accountId" as x_id
      from "user" u join account a on a."userId" = u.id and a."providerId" = 'twitter' where u.id = $1`, [userId])
   if (!u) return null
-  const [rows, weather, recent] = await Promise.all([
-    planeRows('(p.from_x_id = $1 or p.to_x_id = $1)', [u.x_id], 100), weatherRows(), planeRows('p.from_x_id <> $1', [u.x_id], 300),
+  const [rows, weather, recent, xp] = await Promise.all([
+    planeRows('(p.from_x_id = $1 or p.to_x_id = $1)', [u.x_id], 100), weatherRows(), planeRows('p.from_x_id <> $1', [u.x_id], 300), xpOf(userId),
   ])
   const letters = pickLetters(rows, 20)
   const home: [number, number] | null = u.spot_lon != null ? [u.spot_lon, u.spot_lat] : null
   const sky = toSky(recent.sort(() => Math.random() - 0.5))
   // since_id пуст — реплаи юзера ещё ни разу не собирали: игра подождёт их
-  return { guest: false, collecting: !u.since_id, handle: u.handle as string | null, home, homeCountry: u.country as string | null, letters, weather, sky, bag: tally(letters) }
+  return {
+    guest: false, collecting: !u.since_id, handle: u.handle as string | null, home, homeCountry: u.country as string | null,
+    letters, weather, sky, bag: tally(letters), xp, plane: (u.plane as string | null) ?? 'dart',
+  }
 }
 
 // штамп только за своё письмо (отправитель или адресат) и один раз
@@ -83,4 +87,40 @@ export async function airmailStampsOf(userId: string): Promise<Stamp[]> {
   const { rows } = await pool.query(
     `select country, count(*)::int as count, min(delivered_at) as first from airmail where user_id = $1 group by 1 order by 3`, [userId])
   return rows.map((r) => ({ ...r, first: new Date(r.first).toISOString() }))
+}
+
+// опыт пилота: сколько писем доставил за все забеги
+export async function xpOf(userId: string): Promise<number> {
+  const { rows: [r] } = await pool.query(`select coalesce(sum(delivered), 0)::int as xp from airmail_runs where user_id = $1`, [userId])
+  return r.xp
+}
+
+// забег в таблицу; место — среди лучших результатов дня в общем мешке
+export async function saveRun(userId: string, run: Run) {
+  await pool.query(
+    `insert into airmail_runs (user_id, day, mode, score, delivered, km, countries) values ($1, $2, $3, $4, $5, $6, $7)`,
+    [userId, run.day, run.mode, run.score, run.delivered, run.km, run.countries.join('')])
+  const [xp, place] = await Promise.all([
+    xpOf(userId),
+    run.mode === 'daily'
+      ? pool.query(
+          `select count(*)::int + 1 as place from (select user_id, max(score) as best from airmail_runs where day = $1 and mode = 'daily' group by user_id) b
+           where b.best > (select max(score) from airmail_runs where day = $1 and mode = 'daily' and user_id = $2)`, [run.day, userId]).then((r) => r.rows[0].place as number)
+      : Promise.resolve(null),
+  ])
+  return { xp, place }
+}
+
+export type BoardRow = { handle: string; image: string | null; score: number; delivered: number; xp: number }
+
+// топ дня: лучший забег каждого пилота в «Today's Mail #N»
+export async function board(day: number): Promise<BoardRow[]> {
+  const { rows } = await pool.query(
+    `select u.handle, u.image, b.score, b.delivered, (select coalesce(sum(delivered), 0)::int from airmail_runs x where x.user_id = u.id) as xp
+     from (select distinct on (user_id) user_id, score, delivered from airmail_runs where day = $1 and mode = 'daily'
+           order by user_id, score desc, created_at) b
+     join "user" u on u.id = b.user_id
+     where u.handle is not null
+     order by b.score desc limit 20`, [day])
+  return rows
 }

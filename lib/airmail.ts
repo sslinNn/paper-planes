@@ -1,6 +1,8 @@
 import { geoContains, geoDistance, geoInterpolate } from 'd3-geo'
 import { at, EARTH_KM, H, isoOf, land, projection, W } from './geo.ts'
 import { EMOJI, KINDS, modOf, type Kind } from './letters.ts'
+import { PLANE_MOD } from './ranks.ts'
+import type { PlaneModel } from './patrons.ts'
 
 // ---------- типы ----------
 
@@ -27,7 +29,7 @@ export type Game = {
   thermals: Thermal[]; storms: Storm[]; seeds: { x: number; y: number; w: number; iso: string | null; hot: number }[]
   sky: Sky[]; strays: Stray[]; lastStray: number; caught: number
   score: number; combo: number; lastDelivery: number; leg: number
-  startIso: string | null; left: boolean; diving: boolean
+  startIso: string | null; left: boolean; diving: boolean; plane: PlaneModel
   trail: [number, number][]; km: number; inStorm: boolean; done: boolean; won: boolean
 }
 
@@ -126,12 +128,13 @@ export const reached = (g: Game, l: Letter) => {
 }
 
 // ветер вдоль курса в долях собственной скорости: + попутный, − встречный (письмо-шутка ловит ветер сильнее)
-export const headwind = (g: Game) => wind(lonlat(g.x, g.y)[1]) * modOf(active(g)?.kind).wind * Math.cos(g.heading) / modOf(active(g)?.kind).speed
+export const headwind = (g: Game) =>
+  (wind(lonlat(g.x, g.y)[1]) * modOf(active(g)?.kind).wind * PLANE_MOD[g.plane].wind * Math.cos(g.heading)) / (modOf(active(g)?.kind).speed * PLANE_MOD[g.plane].speed)
 export function select(g: Game, id: number) {
   if (g.letters.some((l) => l.id === id)) g.target = id
 }
 
-export function newGame(letters: Letter[], weather: CountryWeather[], start: [number, number] | null, sky: Sky[] = []): Game {
+export function newGame(letters: Letter[], weather: CountryWeather[], start: [number, number] | null, sky: Sky[] = [], plane: PlaneModel = 'dart'): Game {
   // без точки старта — из страны отправителя первого письма
   const origin = start ?? at(letters.find((l) => l.from_country)?.from_country ?? null)
   const [x, y] = projection(origin)!
@@ -150,7 +153,7 @@ export function newGame(letters: Letter[], weather: CountryWeather[], start: [nu
     thermals, storms: [], seeds,
     sky: sky.filter((s) => s.from_country && s.to_country && s.from_country !== s.to_country), strays: [], lastStray: -Infinity, caught: 0,
     score: 0, combo: 0, lastDelivery: -Infinity, leg: 0,
-    startIso: countryAt(origin), left: false, diving: false,
+    startIso: countryAt(origin), left: false, diving: false, plane,
     trail: [[x, y]], km: 0, inStorm: false, done: false, won: false,
   }
   g.target = nearest(g)
@@ -227,6 +230,7 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   const dt = Math.min(rawDt, MAX_DT)
   const ev: GameEvent[] = []
   const m = modOf(active(g)?.kind)
+  const pm = PLANE_MOD[g.plane]
   g.t += dt
   g.diving = input.dive
 
@@ -234,16 +238,16 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   if (input.aim !== null) {
     let d = input.aim - g.heading
     d = Math.atan2(Math.sin(d), Math.cos(d))
-    g.heading += Math.max(-TURN * dt, Math.min(TURN * dt, d))
-  } else g.heading += input.turn * TURN * dt
+    g.heading += Math.max(-TURN * pm.turn * dt, Math.min(TURN * pm.turn * dt, d))
+  } else g.heading += input.turn * TURN * pm.turn * dt
   // гроза болтает самолётик
   // (своя случайность: сид дня управляет только тем, где и когда рождаются грозы и чужие самолётики)
   if (g.inStorm) g.heading += (Math.random() - 0.5) * 5 * dt
 
   const dive = input.dive ? DIVE : { speed: 1, sink: 1 }
   const before = lonlat(g.x, g.y)
-  const vx = Math.cos(g.heading) * SPEED * m.speed * dive.speed + wind(before[1]) * SPEED * m.wind
-  const vy = Math.sin(g.heading) * SPEED * m.speed * dive.speed
+  const vx = Math.cos(g.heading) * SPEED * m.speed * pm.speed * dive.speed + wind(before[1]) * SPEED * m.wind * pm.wind
+  const vy = Math.sin(g.heading) * SPEED * m.speed * pm.speed * dive.speed
   g.x = wrap(g.x + vx * dt)
   g.y = Math.min(H - 2, Math.max(2, g.y + vy * dt))
   const here = lonlat(g.x, g.y)
@@ -253,7 +257,7 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   if (!g.left && !(g.startIso && delivered(here, g.startIso))) g.left = true
 
   // высота
-  g.alt -= SINK * m.sink * dive.sink * dt
+  g.alt -= SINK * m.sink * pm.sink * dive.sink * dt
   for (const th of g.thermals) {
     if (th.left > 0 && dist(g.x, g.y, th.x, th.y) < th.r) {
       const lift = Math.min(th.left, th.lift * dt)
@@ -262,7 +266,7 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
     }
   }
   const storm = g.storms.find((s) => dist(g.x, g.y, s.x, s.y) < s.r)
-  if (storm) g.alt -= STORM_SINK * dt
+  if (storm) g.alt -= STORM_SINK * pm.storm * dt
   if (storm && !g.inStorm) ev.push({ type: 'storm', storm })
   g.inStorm = !!storm
 

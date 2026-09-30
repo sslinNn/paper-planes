@@ -68,3 +68,15 @@ create table if not exists rate_limits (
 
 -- паспорт (/api/me) ищет самолётики юзера по from_x_id; таблица растёт вечно, без индекса это seq scan
 create index if not exists planes_from_x_id on planes (from_x_id);
+
+-- AIRMAIL: тип письма, который решил Jev (warm | hot | joke | question | plain). Текст реплая не храним
+alter table planes add column if not exists kind text;
+
+-- AIRMAIL: штамп за доставку письма в игре. Один на письмо и юзера
+create table if not exists airmail (
+  user_id text not null references "user"(id) on delete cascade,
+  plane_id int not null references planes(id) on delete cascade,
+  country text not null,
+  delivered_at timestamptz not null default now(),
+  primary key (user_id, plane_id)
+);

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getMe, getTweets, RateLimited, Unauthorized, X_DAILY_USD, xCost } from './x.ts'
+import { getMe, getTweets, getTweetsByIds, RateLimited, Unauthorized, X_DAILY_USD, xCost } from './x.ts'
 
 const fake = (status: number, body: unknown, seen: string[] = []) =>
   ((url: string | URL | Request) => {
@@ -71,4 +71,11 @@ test('xCost: worst-case price; a full first run fits the daily budget many times
   assert.ok(Math.abs(xCost(20, 20) - 0.3) < 1e-9)
   assert.ok(Math.abs(xCost(0, 1) - 0.01) < 1e-9)
   assert.ok(xCost(20, 20) * 3 <= X_DAILY_USD)
+})
+
+test('getTweetsByIds asks for up to 100 ids and returns texts', async () => {
+  const seen: string[] = []
+  const r = await getTweetsByIds('tok', ['1', '2'], fake(200, { data: [{ id: '1', text: 'hi' }] }, seen))
+  assert.equal(new URL(seen[0]).searchParams.get('ids'), '1,2')
+  assert.deepEqual(r, [{ id: '1', text: 'hi' }])
 })

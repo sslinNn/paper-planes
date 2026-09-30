@@ -53,3 +53,9 @@ export async function getMe(token: string, f: typeof fetch = fetch) {
   )
   return j.data
 }
+
+// твиты по id (до 100) — текст для Jev у писем, собранных до AIRMAIL
+export async function getTweetsByIds(token: string, ids: string[], f: typeof fetch = fetch) {
+  const j = await get<{ data?: { id: string; text: string }[] }>(`${API}/tweets?ids=${ids.slice(0, 100).join(',')}`, token, f)
+  return j.data ?? []
+}

@@ -1,11 +1,12 @@
 import { parseCountry } from './country.ts'
+import type { Kind } from './letters.ts'
 
-export type Tweet = { id: string; created_at: string; in_reply_to_user_id?: string }
+export type Tweet = { id: string; created_at: string; in_reply_to_user_id?: string; text?: string }
 export type XUser = { id: string; username: string; location?: string }
 export type Me = { x_id: string; handle: string; country: string | null }
 export type Plane = {
   tweet_id: string; from_x_id: string; to_x_id: string; from_handle: string; to_handle: string
-  from_country: string | null; to_country: string | null; created_at: string
+  from_country: string | null; to_country: string | null; created_at: string; kind: Kind | null
 }
 export type Recipient = { x_id: string; handle: string; country: string | null }
 
@@ -38,14 +39,14 @@ export function resolveCountries(
   return { countryOf, newRecipients }
 }
 
-export function toPlanes(me: Me, tweets: Tweet[], users: XUser[], countryOf: Map<string, string | null>): Plane[] {
+export function toPlanes(me: Me, tweets: Tweet[], users: XUser[], countryOf: Map<string, string | null>, kinds = new Map<string, Kind>()): Plane[] {
   const byId = new Map(users.map((u) => [u.id, u]))
   return tweets.flatMap((t) => {
     const to = isReplyToOther(me, t) ? byId.get(t.in_reply_to_user_id!) : undefined
     if (!to) return []
     return [{
       tweet_id: t.id, from_x_id: me.x_id, to_x_id: to.id, from_handle: me.handle, to_handle: to.username,
-      from_country: me.country, to_country: countryOf.get(to.id) ?? null, created_at: t.created_at,
+      from_country: me.country, to_country: countryOf.get(to.id) ?? null, created_at: t.created_at, kind: kinds.get(t.id) ?? null,
     }]
   })
 }

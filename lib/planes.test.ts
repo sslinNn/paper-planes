@@ -16,7 +16,7 @@ test('replyTargets: only replies to other people, unique', () => {
 test('toPlanes: reply to other user becomes plane', () => {
   assert.deepEqual(toPlanes(me, [t('a', '2')], users, new Map([['2', 'DE']])), [{
     tweet_id: 'a', from_x_id: '1', to_x_id: '2', from_handle: 'me', to_handle: 'bob',
-    from_country: 'RU', to_country: 'DE', created_at: '2026-09-28T00:00:00Z',
+    from_country: 'RU', to_country: 'DE', created_at: '2026-09-28T00:00:00Z', kind: null,
   }])
 })
 
@@ -43,4 +43,14 @@ test('resolveCountries: unknown user without includes → null, not cached', () 
   const { countryOf, newRecipients } = resolveCountries(['9'], new Map(), new Map(), [])
   assert.equal(countryOf.get('9'), null)
   assert.deepEqual(newRecipients, [])
+})
+
+test('toPlanes attaches the Jev kind by tweet id, null when unknown', () => {
+  const tweets = [
+    { id: 't1', created_at: '2026-09-01T00:00:00Z', in_reply_to_user_id: '2', text: '@bob thanks' },
+    { id: 't2', created_at: '2026-09-01T00:00:00Z', in_reply_to_user_id: '2', text: '@bob hm' },
+  ]
+  const planes = toPlanes(me, tweets, users, new Map([['2', 'FR']]), new Map([['t1', 'warm' as const]]))
+  assert.deepEqual(planes.map((p) => p.kind), ['warm', null])
+  assert.equal('text' in planes[0], false)
 })

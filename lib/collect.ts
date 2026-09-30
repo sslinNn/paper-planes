@@ -3,7 +3,8 @@ import { syncDonations } from './donations.ts'
 import { parseCountry } from './country.ts'
 import { pool } from './db.ts'
 import { type Me, replyTargets, resolveCountries, toPlanes } from './planes.ts'
-import { getMe, getTweets, RateLimited, X_DAILY_USD, xCost } from './x.ts'
+import { getMe, getTweets, getTweetsByIds, RateLimited, X_DAILY_USD, xCost } from './x.ts'
+import { foldLetters } from './jev.ts'
 
 type Row = {
   user_id: string; account_id: string; x_id: string; handle: string
@@ -59,18 +60,37 @@ async function collectUser(r: Row): Promise<number> {
        select x_id, handle, country from json_populate_recordset(null::recipients, $1::json)
        on conflict (x_id) do update set country = excluded.country, handle = excluded.handle`, [JSON.stringify(newRecipients)])
 
-    const planes = toPlanes(me, tweets, users, countryOf)
+    // Jev читает реплаи адресатам один раз — в базу уходит только ярлык письма
+    const replies = tweets.filter((t) => t.text && t.in_reply_to_user_id && t.in_reply_to_user_id !== me.x_id)
+    const kinds = await foldLetters(replies.map((t) => ({ id: t.id, text: t.text! })))
+    const planes = toPlanes(me, tweets, users, countryOf, kinds)
     const res = await pool.query(
-      `insert into planes (tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_country, to_country, created_at)
-       select tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_country, to_country, created_at
+      `insert into planes (tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_country, to_country, created_at, kind)
+       select tweet_id, from_x_id, to_x_id, from_handle, to_handle, from_country, to_country, created_at, kind
        from json_populate_recordset(null::planes, $1::json)
        on conflict (tweet_id) do nothing`, [JSON.stringify(planes)])
     count = res.rowCount ?? 0
   }
 
+  // старые письма без ярлыка Jev (собраны до AIRMAIL): до 100 за прогон, свои реплаи — owned read
+  await foldOld(accessToken, r.x_id).catch((e) => console.error(`fold old @${me.handle}:`, e))
+
   // since_id двигаем строго после вставки самолётиков — иначе потеряем их
   if (newestId !== r.since_id) await pool.query(`update "user" set "sinceId" = $1 where id = $2`, [newestId, r.user_id])
   return count
+}
+
+async function foldOld(token: string, xId: string) {
+  const { rows } = await pool.query(`select tweet_id from planes where kind is null and from_x_id = $1 limit 100`, [xId])
+  if (!rows.length) return
+  const ids: string[] = rows.map((r) => r.tweet_id)
+  const tweets = await getTweetsByIds(token, ids)
+  await spend(xCost(tweets.length, 0))
+  const kinds = await foldLetters(tweets)
+  // Jev ответил — ставим ярлык; удалённого твита больше нет — письмо обычное, чтобы не перечитывать его вечно
+  const gone = ids.filter((id) => !tweets.some((t) => t.id === id))
+  const set = [...kinds, ...gone.map((id) => [id, 'plain'] as const)]
+  for (const [id, kind] of set) await pool.query(`update planes set kind = $1 where tweet_id = $2`, [kind, id])
 }
 
 export async function collect(userId?: string): Promise<number> {

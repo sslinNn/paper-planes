@@ -50,7 +50,15 @@ export async function dailyBag() {
   return { guest: true, daily: day, handle: null, home: null, homeCountry: null, letters, weather, sky: toSky(shuffled), bag: tally(letters) }
 }
 
-// залогиненный: его реплаи и реплаи ему, 20 свежих
+// свободный полёт: 60 свежих писем с известной страной адресата — клиент тасует их каждый забег, маршрут всегда новый
+export async function freeBag() {
+  const [recent, weather] = await Promise.all([planeRows('true', [], 500), weatherRows()])
+  const known = recent.filter((p) => p.to_country && p.from_country).sort(() => Math.random() - 0.5)
+  const letters = known.slice(0, 60).map(toLetter)
+  return { guest: true, handle: null, home: null, homeCountry: null, letters, weather, sky: toSky(known), bag: tally(letters) }
+}
+
+// залогиненный: его реплаи и реплаи ему, до 60 свежих
 export async function userBag(userId: string) {
   const { rows: [u] } = await pool.query(
     `select u.handle, u.country, u.spot_lon, u.spot_lat, u."sinceId" as since_id, u.plane, a."accountId" as x_id
@@ -59,7 +67,7 @@ export async function userBag(userId: string) {
   const [rows, weather, recent, xp] = await Promise.all([
     planeRows('(p.from_x_id = $1 or p.to_x_id = $1)', [u.x_id], 100), weatherRows(), planeRows('p.from_x_id <> $1', [u.x_id], 300), xpOf(userId),
   ])
-  const letters = pickLetters(rows, 20)
+  const letters = pickLetters(rows, 60) // клиент тасует и кладёт в мешок 6, остальные — пул бесконечного забега
   const home: [number, number] | null = u.spot_lon != null ? [u.spot_lon, u.spot_lat] : null
   const sky = toSky(recent.sort(() => Math.random() - 0.5))
   // since_id пуст — реплаи юзера ещё ни разу не собирали: игра подождёт их

@@ -9,6 +9,7 @@ import type { PlaneModel } from './patrons.ts'
 export type Letter = {
   id: number; from_handle: string; to_handle: string; to_country: string | null; from_country?: string | null
   created_at?: string; kind: Kind | null
+  rush?: number // срочное письмо: к этому моменту полёта (с) надо успеть, иначе сгорит; платит ×3
 }
 // чужой свежий реплай из общего неба — летит по своему настоящему маршруту, его можно поймать
 export type Sky = { from_handle: string; to_handle: string; from_country: string | null; to_country: string | null }
@@ -17,12 +18,54 @@ export type Thermal = { x: number; y: number; r: number; lift: number; left: num
 export type Storm = { x: number; y: number; r: number; born: number; iso: string | null; hot: number }
 export type Stray = { pts: [number, number][]; i: number; rate: number; x: number; y: number; heading: number; label: string }
 export type Input = { aim: number | null; turn: number; dive: boolean } // aim — курс (рад), turn — −1..1 со стрелок
+
+// погода забега: одно условие на полёт — меняет ветер, грозы, термики или видимость
+export type CondId = 'fair' | 'jet' | 'monsoon' | 'clear' | 'night' | 'fog'
+export type Cond = {
+  id: CondId; name: string; blurb: string; wind: number; thermal: number; stormR: number
+  calm: number; stormBase: number; stormEvery: number; stormCap: number; veil: null | 'night' | 'fog'
+}
+const FAIR: Cond = { id: 'fair', name: 'Fair weather', blurb: 'Steady winds, normal skies', wind: 1, thermal: 1, stormR: 1, calm: 10, stormBase: 3, stormEvery: 20, stormCap: 10, veil: null }
+export const CONDS: Record<CondId, Cond> = {
+  fair: FAIR,
+  jet: { ...FAIR, id: 'jet', name: 'Jet stream', blurb: 'Winds ×2: ride them or fight them', wind: 2 },
+  monsoon: { ...FAIR, id: 'monsoon', name: 'Monsoon', blurb: 'Storms come early and often', calm: 5, stormBase: 5, stormEvery: 12, stormCap: 14 },
+  clear: { ...FAIR, id: 'clear', name: 'Clear skies', blurb: 'Barely a breeze, strong thermals, big storms', wind: 0.2, thermal: 1.6, stormR: 1.4 },
+  night: { ...FAIR, id: 'night', name: 'Night mail', blurb: 'Dark skies: follow the arrow', veil: 'night' },
+  fog: { ...FAIR, id: 'fog', name: 'Fog', blurb: 'Recipients show up only up close', veil: 'fog' },
+}
+const COND_IDS = Object.keys(CONDS) as CondId[]
+export const pickCond = (rand: () => number) => CONDS[COND_IDS[Math.floor(rand() * COND_IDS.length)]]
+
+// события посреди полёта: шар поднимает, гуси сбивают, порыв сносит вбок
+export type Hazard =
+  | { type: 'balloon'; x: number; y: number; born: number }
+  | { type: 'geese'; x: number; y: number; vx: number; vy: number; born: number; hit: boolean }
+  | { type: 'gust'; y: number; h: number; dir: number; born: number }
+
+// задание на забег: одна цель, после выполнения — следующая
+export type MissionId = 'hot' | 'ocean' | 'catch2' | 'combo3' | 'km' | 'balloon'
+export const MISSIONS: Record<MissionId, { text: string; need: number }> = {
+  hot: { text: 'Deliver a 🔥 hot take', need: 1 },
+  ocean: { text: 'Land a letter after a 5,000 km leg', need: 1 },
+  catch2: { text: 'Catch 2 stray planes', need: 2 },
+  combo3: { text: 'Chain a ×3 express', need: 1 },
+  km: { text: 'Fly 8,000 km', need: 8000 },
+  balloon: { text: 'Grab a balloon', need: 1 },
+}
+export type Extra = { pool?: Letter[]; cond?: Cond; rand?: () => number }
 export type GameEvent =
   | { type: 'delivered'; letter: Letter; points: number; combo: number }
   | { type: 'caught'; stray: Stray; points: number }
   | { type: 'storm'; storm: Storm }
   | { type: 'crashed' }
   | { type: 'emptied' }
+  | { type: 'balloon' }
+  | { type: 'geese' }
+  | { type: 'gust' }
+  | { type: 'rush'; letter: Letter }
+  | { type: 'burned'; letter: Letter }
+  | { type: 'mission'; text: string }
 export type Game = {
   x: number; y: number; heading: number; alt: number; t: number
   letters: Letter[]; target: number | null; delivered: Letter[]
@@ -31,6 +74,8 @@ export type Game = {
   score: number; combo: number; lastDelivery: number; leg: number
   startIso: string | null; left: boolean; diving: boolean; plane: PlaneModel
   trail: [number, number][]; km: number; inStorm: boolean; done: boolean; won: boolean
+  pool: Letter[]; cond: Cond; hazards: Hazard[]; nextEvent: number; inGust: boolean; rushSeq: number
+  mission: { id: MissionId; have: number } | null; missionsDone: number
 }
 
 // ---------- константы (крутятся плейтестом) ----------
@@ -51,6 +96,14 @@ export const DELIVER_R = 9 // письмо ложится, только когд
 export const CATCH_R = 9
 export const CATCH_LIFT = 12
 export const CATCH_POINTS = 50
+export const BALLOON_LIFT = 35
+export const GEESE_HIT = 15
+export const RUSH_SECONDS = 16
+export const MISSION_LIFT = 25
+export const MISSION_POINTS = 300
+const FIRST_EVENT = 8
+const HAZARD_LIFE = { balloon: 20, geese: 14, gust: 9 } as const
+const GUST_WARN = 1.5 // столько секунд порыв виден, но ещё не сносит
 const MAX_STRAYS = 3
 const STRAY_EVERY = 2.5
 const MAX_DT = 0.05
@@ -129,12 +182,16 @@ export const reached = (g: Game, l: Letter) => {
 
 // ветер вдоль курса в долях собственной скорости: + попутный, − встречный (письмо-шутка ловит ветер сильнее)
 export const headwind = (g: Game) =>
-  (wind(lonlat(g.x, g.y)[1]) * modOf(active(g)?.kind).wind * PLANE_MOD[g.plane].wind * Math.cos(g.heading)) / (modOf(active(g)?.kind).speed * PLANE_MOD[g.plane].speed)
+  (wind(lonlat(g.x, g.y)[1]) * g.cond.wind * modOf(active(g)?.kind).wind * PLANE_MOD[g.plane].wind * Math.cos(g.heading)) /
+  (modOf(active(g)?.kind).speed * PLANE_MOD[g.plane].speed)
 export function select(g: Game, id: number) {
   if (g.letters.some((l) => l.id === id)) g.target = id
 }
 
-export function newGame(letters: Letter[], weather: CountryWeather[], start: [number, number] | null, sky: Sky[] = [], plane: PlaneModel = 'dart'): Game {
+export function newGame(
+  letters: Letter[], weather: CountryWeather[], start: [number, number] | null, sky: Sky[] = [], plane: PlaneModel = 'dart', extra: Extra = {},
+): Game {
+  const cond = extra.cond ?? FAIR
   // без точки старта — из страны отправителя первого письма
   const origin = start ?? at(letters.find((l) => l.from_country)?.from_country ?? null)
   const [x, y] = projection(origin)!
@@ -142,7 +199,7 @@ export function newGame(letters: Letter[], weather: CountryWeather[], start: [nu
   const places = weather.filter((w) => w.iso !== 'AQ').map((w) => ({ w, p: projection(at(w.iso))! }))
   const thermals = places.map(({ w, p }) => ({
     x: p[0], y: p[1], r: 14 + 16 * Math.min(1, w.total / max),
-    lift: THERMAL_LIFT * (0.4 + (w.warm + 1) / (w.total + 2)), left: THERMAL_CHARGE, iso: w.iso, warm: w.warm,
+    lift: THERMAL_LIFT * cond.thermal * (0.4 + (w.warm + 1) / (w.total + 2)), left: THERMAL_CHARGE, iso: w.iso, warm: w.warm,
   }))
   // грозы рождаются там, где X спорит; без погоды — над адресатами писем
   const seeds = places.length
@@ -155,7 +212,10 @@ export function newGame(letters: Letter[], weather: CountryWeather[], start: [nu
     score: 0, combo: 0, lastDelivery: -Infinity, leg: 0,
     startIso: countryAt(origin), left: false, diving: false, plane,
     trail: [[x, y]], km: 0, inStorm: false, done: false, won: false,
+    pool: [...(extra.pool ?? [])], cond, hazards: [], nextEvent: FIRST_EVENT, inGust: false, rushSeq: -1,
+    mission: null, missionsDone: 0,
   }
+  nextMission(g, extra.rand ?? Math.random)
   g.target = nearest(g)
   const a = active(g)
   if (a) {
@@ -167,6 +227,59 @@ export function newGame(letters: Letter[], weather: CountryWeather[], start: [nu
   return g
 }
 
+function nextMission(g: Game, rand: () => number) {
+  const hot = [...g.letters, ...g.pool].some((l) => l.kind === 'hot')
+  const ids = (Object.keys(MISSIONS) as MissionId[]).filter((id) => id !== g.mission?.id && (id !== 'hot' || hot))
+  g.mission = { id: ids[Math.floor(rand() * ids.length)], have: 0 }
+}
+
+// продвинуть задание; выполнено — награда и следующее
+function progress(g: Game, id: MissionId, by: number, ev: GameEvent[], rand: () => number) {
+  if (!g.mission || g.mission.id !== id) return
+  g.mission.have += by
+  if (g.mission.have < MISSIONS[id].need) return
+  g.alt += MISSION_LIFT
+  g.score += MISSION_POINTS
+  g.missionsDone++
+  ev.push({ type: 'mission', text: MISSIONS[id].text })
+  nextMission(g, rand)
+}
+
+// событие посреди полёта: всегда рядом с игроком, чтобы было что решать
+function spawnEvent(g: Game, rand: () => number): GameEvent | null {
+  const r = rand()
+  const fx = Math.cos(g.heading), fy = Math.sin(g.heading)
+  if (r < 0.25) {
+    const side = (rand() - 0.5) * 60
+    g.hazards.push({ type: 'balloon', x: wrap(g.x + fx * 110 - fy * side), y: Math.min(H - 10, Math.max(10, g.y + fy * 110 + fx * side)), born: g.t })
+    return null
+  }
+  if (r < 0.5) {
+    // клин летит поперёк пути: из точки сбоку в точку впереди
+    const s = rand() < 0.5 ? -1 : 1
+    const ax = g.x + fx * 60, ay = g.y + fy * 60
+    const x0 = ax + fy * s * 130, y0 = ay - fx * s * 130
+    const len = Math.hypot(ax - x0, ay - y0) || 1
+    g.hazards.push({ type: 'geese', x: wrap(x0), y: y0, vx: ((ax - x0) / len) * 30, vy: ((ay - y0) / len) * 30, born: g.t, hit: false })
+    return null
+  }
+  if (r < 0.72) {
+    g.hazards.push({ type: 'gust', y: g.y + (rand() - 0.5) * 30, h: 18, dir: rand() < 0.5 ? -1 : 1, born: g.t })
+    return null
+  }
+  // срочное письмо: настоящий реплай из неба, адресат не слишком близко и не слишком далеко
+  const near = g.sky.filter((s) => {
+    const [tx, ty] = projection(at(s.to_country))!
+    const d = dist(g.x, g.y, tx, ty)
+    return d > 60 && d < 220
+  })
+  if (!near.length) return null
+  const s = near[Math.floor(rand() * near.length)]
+  const letter: Letter = { id: g.rushSeq--, from_handle: s.from_handle, to_handle: s.to_handle, to_country: s.to_country, from_country: s.from_country, kind: null, rush: g.t + RUSH_SECONDS }
+  g.letters.push(letter)
+  return { type: 'rush', letter }
+}
+
 function spawnStorm(g: Game, rand: () => number) {
   const total = g.seeds.reduce((s, p) => s + p.w, 0)
   let r = rand() * total
@@ -174,7 +287,7 @@ function spawnStorm(g: Game, rand: () => number) {
   g.storms.push({
     x: wrap(seed.x + (rand() - 0.5) * 60),
     y: Math.min(H - 20, Math.max(20, seed.y + (rand() - 0.5) * 40)),
-    r: 25 + rand() * 15, born: g.t, iso: seed.iso, hot: seed.hot,
+    r: (25 + rand() * 15) * g.cond.stormR, born: g.t, iso: seed.iso, hot: seed.hot,
   })
 }
 
@@ -246,7 +359,9 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
 
   const dive = input.dive ? DIVE : { speed: 1, sink: 1 }
   const before = lonlat(g.x, g.y)
-  const vx = Math.cos(g.heading) * SPEED * m.speed * pm.speed * dive.speed + wind(before[1]) * SPEED * m.wind * pm.wind
+  const gust = g.hazards.find((h) => h.type === 'gust' && g.t - h.born > GUST_WARN && Math.abs(g.y - h.y) < h.h)
+  const vx = Math.cos(g.heading) * SPEED * m.speed * pm.speed * dive.speed + wind(before[1]) * SPEED * g.cond.wind * m.wind * pm.wind +
+    (gust?.type === 'gust' ? gust.dir * SPEED * 0.9 : 0)
   const vy = Math.sin(g.heading) * SPEED * m.speed * pm.speed * dive.speed
   g.x = wrap(g.x + vx * dt)
   g.y = Math.min(H - 2, Math.max(2, g.y + vy * dt))
@@ -254,6 +369,9 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   const km = geoDistance(before, here) * EARTH_KM
   g.km += km
   g.leg += km
+  if (gust && !g.inGust) ev.push({ type: 'gust' })
+  g.inGust = !!gust
+  progress(g, 'km', km, ev, rand)
   if (!g.left && !(g.startIso && delivered(here, g.startIso))) g.left = true
 
   // высота
@@ -273,7 +391,8 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   // грозы: после затишья, больше со временем, дрейфуют по ветру, живут STORM_LIFE
   g.storms = g.storms.filter((s) => g.t - s.born < STORM_LIFE)
   for (const s of g.storms) s.x = wrap(s.x + wind(lonlat(s.x, s.y)[1]) * SPEED * 0.5 * dt)
-  const want = g.t < CALM ? 0 : Math.min(10, 3 + Math.floor((g.t - CALM) / 20))
+  const c = g.cond
+  const want = g.t < c.calm ? 0 : Math.min(c.stormCap, c.stormBase + Math.floor((g.t - c.calm) / c.stormEvery))
   while (g.storms.length < want && g.seeds.length) spawnStorm(g, rand)
 
   // живое небо: чужие самолётики пересекают путь; пролетел сквозь — поймал
@@ -286,8 +405,40 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
     const points = CATCH_POINTS * Math.max(1, g.combo)
     g.score += points
     ev.push({ type: 'caught', stray: s, points })
+    progress(g, 'catch2', 1, ev, rand)
     return false
   })
+
+  // события: шар, гуси, порыв, срочное письмо
+  g.hazards = g.hazards.filter((h) => g.t - h.born < HAZARD_LIFE[h.type])
+  for (const h of g.hazards) {
+    if (h.type === 'geese') {
+      h.x = wrap(h.x + h.vx * dt)
+      h.y += h.vy * dt
+      if (!h.hit && dist(g.x, g.y, h.x, h.y) < 9) {
+        h.hit = true
+        g.alt -= GEESE_HIT
+        ev.push({ type: 'geese' })
+      }
+    }
+  }
+  const balloon = g.hazards.find((h) => h.type === 'balloon' && dist(g.x, g.y, h.x, h.y) < 10)
+  if (balloon) {
+    g.hazards = g.hazards.filter((h) => h !== balloon)
+    g.alt += BALLOON_LIFT
+    ev.push({ type: 'balloon' })
+    progress(g, 'balloon', 1, ev, rand)
+  }
+  if (g.t >= g.nextEvent) {
+    g.nextEvent = g.t + 9 + rand() * 5
+    const e = spawnEvent(g, rand)
+    if (e) ev.push(e)
+  }
+  for (const l of g.letters.filter((l) => l.rush !== undefined && g.t > l.rush)) {
+    g.letters = g.letters.filter((x) => x !== l)
+    if (g.target === l.id) g.target = nearest(g)
+    ev.push({ type: 'burned', letter: l })
+  }
   if (g.t > 2 && g.strays.length < MAX_STRAYS && g.t - g.lastStray > STRAY_EVERY) {
     g.lastStray = g.t
     spawnStray(g, rand)
@@ -298,14 +449,21 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   if (letter && !local(g, letter) && reached(g, letter)) {
     g.combo = g.t - g.lastDelivery < COMBO_WINDOW ? g.combo + 1 : 1
     g.lastDelivery = g.t
-    const points = Math.round((100 + g.leg / 10) * m.score * Math.min(g.combo, COMBO_MAX))
+    const points = Math.round((100 + g.leg / 10) * m.score * Math.min(g.combo, COMBO_MAX) * (letter.rush !== undefined ? 3 : 1))
     g.score += points
+    const leg = g.leg
     g.leg = 0
     g.alt += DELIVERY_LIFT * m.delivery
     g.letters = g.letters.filter((l) => l.id !== letter.id)
     g.delivered.push(letter)
+    // бесконечный мешок: на место доставленного — следующее письмо из пула
+    const next = g.pool.shift()
+    if (next) g.letters.push(next)
     g.target = nearest(g)
     ev.push({ type: 'delivered', letter, points, combo: g.combo })
+    if (letter.kind === 'hot') progress(g, 'hot', 1, ev, rand)
+    if (leg >= 5000) progress(g, 'ocean', 1, ev, rand)
+    if (g.combo >= 3) progress(g, 'combo3', 1, ev, rand)
   }
   if (g.t - g.lastDelivery >= COMBO_WINDOW) g.combo = 0
   g.alt = Math.min(100, g.alt)

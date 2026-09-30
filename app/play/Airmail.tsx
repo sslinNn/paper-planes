@@ -5,8 +5,8 @@ import { at, projection, W } from '@/lib/geo'
 import { countryName } from '@/lib/country'
 import { EFFECT, EMOJI, LABEL, type Kind } from '@/lib/letters'
 import {
-  active, COMBO_WINDOW, countryAt, headwind, newGame, select, shareText, step, tallyLine, targetPoint, TURN,
-  type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
+  active, COMBO_WINDOW, CONDS, countryAt, headwind, MISSIONS, newGame, pickCond, select, shareText, step, tallyLine, targetPoint, TURN,
+  type Cond, type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
 } from '@/lib/airmail'
 import { dailyShare, dayNumber, rng, routeCode, type Route } from '@/lib/postcard'
 import { rankOf, unlocked, type Rank } from '@/lib/ranks'
@@ -17,7 +17,7 @@ import { track } from '@/lib/track'
 import { PassportStamp, RubberFilter } from '../me/Passport'
 import { XMark } from '../icons'
 import { C, drawResult, drawWorld, STILL, toScreen, zoomFor, type Fx, type Ghost, type Pose, type View } from './draw'
-import { beep, chirp, crumple, isMuted, rustle, setMusic, setMuted, setWind, silence, startMusic, stopMusic, thud, unlock } from './sound'
+import { beep, chirp, crumple, honk, isMuted, rustle, setMusic, setMuted, setWind, silence, startMusic, stopMusic, thud, unlock } from './sound'
 
 export type Bag = {
   guest: boolean; handle: string | null; home: [number, number] | null; homeCountry?: string | null
@@ -28,7 +28,7 @@ export type Bag = {
   plane?: string
 }
 type BoardRow = { handle: string; image: string | null; score: number; delivered: number; xp: number }
-type Mode = 'mine' | 'daily'
+type Mode = 'mine' | 'daily' | 'free'
 type Phase = 'loading' | 'intro' | 'flying' | 'over'
 type Stamped = { key: number; country: string; points: number; combo: number }
 
@@ -132,7 +132,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const [daily, setDaily] = useState<Bag | null>(null)
   const [authed, setAuthed] = useState(false)
   const [mode, setMode] = useState<Mode>('daily')
-  const [hud, setHud] = useState({ alt: 100, letters: [] as Letter[], target: null as number | null, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: 0 })
+  const [hud, setHud] = useState({ alt: 100, letters: [] as Letter[], target: null as number | null, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: 0, t: 0, mission: '' })
+  const [free, setFree] = useState<Bag | null>(null)
+  const [cond, setCond] = useState<Cond>(CONDS.fair)
   const [stampOn, setStampOn] = useState<Stamped | null>(null)
   const [result, setResult] = useState<Game | null>(null)
   // localStorage читается лениво: на сервере фаза loading, эти значения в разметку ещё не попадают
@@ -149,7 +151,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   useEffect(() => {
     xpRef.current = xp
   }, [xp])
-  const bag = mode === 'mine' ? mine : daily
+  const bag = mode === 'mine' ? mine : mode === 'free' ? free : daily
 
   // мешок дня для всех; личный — если вошёл. Вошёл прямо из игры — ждём, пока соберутся реплаи
   useEffect(() => {
@@ -177,6 +179,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     // intro открывается, как только пришёл мешок дня; личный подтянется следом и сменит кнопку
     const ready = () => !stop && setPhase((p) => (p === 'loading' ? 'intro' : p))
     loadDaily().then(ready, ready)
+    fetch('/api/airmail/free').then((r) => r.json()).then((b: Bag) => !stop && setFree(b)).catch(() => {})
     loadMine(0).catch(() => {})
     fetch('/api/airmail/board').then((r) => r.json()).then((b: { rows: BoardRow[] }) => !stop && setBoard(b.rows)).catch(() => {})
     return () => {
@@ -194,13 +197,25 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const home = useCallback((b: Bag) => (b.daily ? null : (b.home ?? (b.homeCountry ? at(b.homeCountry) : null))), [])
 
   const start = useCallback((m: Mode) => {
-    const b = m === 'mine' ? mine : daily
+    const b = m === 'mine' ? mine : m === 'free' ? free : daily
     if (!b?.letters.length) return
     unlock()
     setMode(m)
-    const g = newGame(b.letters, b.weather, home(b), b.sky ?? [], plane)
+    // мешок дня фиксирован; свой и свободный — тасуются каждый раз: в руках 5–6 писем, остальные ждут в пуле
+    const shuffled = b.daily ? b.letters : [...b.letters].sort(() => Math.random() - 0.5)
+    const hand = b.daily ? shuffled : shuffled.slice(0, m === 'mine' ? 6 : 5)
+    const rand = b.daily ? rng(b.daily * 104729) : Math.random
+    // погода забега: у мешка дня — по сиду, самый первый полёт новичка — спокойный
+    const c = b.daily ? pickCond(rng(b.daily * 31)) : readNum('airmail-runs') < 1 ? CONDS.fair : pickCond(Math.random)
+    let origin = home(b)
+    if (m === 'free') {
+      const isos = [...new Set(b.letters.flatMap((l) => [l.from_country, l.to_country]).filter((x): x is string => !!x && x !== 'AQ'))]
+      origin = at(isos[Math.floor(Math.random() * isos.length)] ?? null)
+    }
+    const g = newGame(hand, b.weather, origin, b.sky ?? [], plane, { pool: shuffled.slice(hand.length), cond: c, rand })
+    setCond(c)
     // сид дня: у всех одни и те же грозы и чужие самолётики; у каждого дня своя мелодия
-    seeded.current = b.daily ? rng(b.daily * 104729) : Math.random
+    seeded.current = rand
     startMusic(b.daily ?? Date.now())
     setBoardPlace(null)
     setPromoted(null)
@@ -209,11 +224,11 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     pose.current = { ...STILL }
     input.current.aim = null
     view.current = { ...view.current, cx: g.x, cy: g.y }
-    setHud({ alt: 100, letters: g.letters, target: g.target, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: headwind(g) })
+    setHud({ alt: 100, letters: g.letters, target: g.target, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: headwind(g), t: 0, mission: '' })
     setResult(null)
     setPhase('flying')
     track('airmail_start', { mode: m, letters: b.letters.length, day: b.daily })
-  }, [mine, daily, home, plane])
+  }, [mine, daily, free, home, plane])
 
   // события игры: вес штампа, очки, звук, вибрация, обрывки бумаги, штамп в паспорт
   useEffect(() => {
@@ -244,7 +259,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           pose.current.pop = 1
           f.rings.push({ x: tx, y: ty, life: 0.6, max: 0.6, color: C.pink }, { x: tx, y: ty, life: 0.9, max: 0.9, color: C.blue })
           burst([C.pink, C.blue, C.soot], 26 + e.combo * 8)
-          if (mode === 'mine' && bag && !bag.guest)
+          if (mode === 'mine' && bag && !bag.guest && e.letter.id > 0)
             fetch('/api/airmail/stamp', { method: 'POST', body: JSON.stringify({ planeId: e.letter.id }) }).catch(() => {})
           track('airmail_delivered', { kind: e.letter.kind ?? 'plain', country, combo: e.combo, mode })
         }
@@ -259,6 +274,34 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           navigator.vibrate?.([10, 40, 10])
           rustle()
           if (e.storm.hot) f.floaters.push({ x: g.x, y: g.y - 8, text: 'Into the argument!', color: C.soot, life: 1.4, max: 1.4 })
+        }
+        if (e.type === 'balloon') {
+          chirp()
+          pose.current.pop = 1
+          f.floaters.push({ x: g.x, y: g.y - 8, text: '🎈 +lift', color: C.pink, life: 1.4, max: 1.4, big: true })
+        }
+        if (e.type === 'geese') {
+          honk()
+          navigator.vibrate?.([20, 30, 20])
+          shake.current = 8
+          burst([C.paper, C.soot], 16)
+          f.floaters.push({ x: g.x, y: g.y - 8, text: 'Geese! −altitude', color: C.soot, life: 1.4, max: 1.4 })
+        }
+        if (e.type === 'gust') {
+          rustle()
+          f.floaters.push({ x: g.x, y: g.y - 8, text: 'Gust!', color: C.blue, life: 1.1, max: 1.1 })
+        }
+        if (e.type === 'rush') {
+          beep()
+          f.floaters.push({ x: g.x, y: g.y - 10, text: `⏱ Rush letter to @${e.letter.to_handle}: 16s, ×3`, color: C.pink, life: 2.4, max: 2.4 })
+        }
+        if (e.type === 'burned') f.floaters.push({ x: g.x, y: g.y - 8, text: `Rush letter to @${e.letter.to_handle} burned`, color: C.soot, life: 1.8, max: 1.8 })
+        if (e.type === 'mission') {
+          thud(3)
+          pose.current.pop = 1
+          burst([C.blue, C.pink], 30)
+          f.floaters.push({ x: g.x, y: g.y - 12, text: `🎯 ${e.text} · +300`, color: C.blue, life: 2.2, max: 2.2, big: true })
+          track('airmail_mission', { text: e.text })
         }
         if (e.type === 'crashed') crumple()
         if (e.type === 'emptied') burst([C.pink, C.blue, C.soot, C.paper], 80)
@@ -289,7 +332,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
 
   // attract mode: пока висит intro, самолётик сам развозит письма за карточкой — сцена живая с первого кадра
   useEffect(() => {
-    const b = (mine?.letters.length ? mine : null) ?? daily
+    const b = (mine?.letters.length ? mine : null) ?? (free?.letters.length ? free : null) ?? daily
     if (phase !== 'intro' || !b?.letters.length) return
     const ctx = canvas.current!.getContext('2d')!
     const calm = reduced()
@@ -318,7 +361,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', vis)
     }
-  }, [phase, mine, daily, home])
+  }, [phase, mine, daily, free, home])
 
   // игровой цикл
   useEffect(() => {
@@ -347,7 +390,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       if (authed) {
         fetch('/api/airmail/run', {
           method: 'POST',
-          body: JSON.stringify({ day: bag.daily ?? dayNumber(), mode: bag.daily ? 'daily' : 'mine', score: Math.round(g.score), delivered: g.delivered.length, km: Math.round(g.km), countries }),
+          body: JSON.stringify({ day: bag.daily ?? dayNumber(), mode, score: Math.round(g.score), delivered: g.delivered.length, km: Math.round(g.km), countries }),
         })
           .then((r) => (r.ok ? r.json() : null))
           .then((r: { xp: number; place: number | null } | null) => {
@@ -444,7 +487,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
         hudAt = now
         const hint = tutorial && !g.done ? (HINTS.find(([a, b]) => g.t >= a && g.t < b)?.[2](touch) ?? '') : ''
         const comboLeft = g.combo ? Math.max(0, 1 - (g.t - g.lastDelivery) / COMBO_WINDOW) : 0
-        setHud((h) => ({ ...h, alt: g.alt, letters: g.letters, target: g.target, score: g.score, combo: g.combo, comboLeft, hint, wind: headwind(g) }))
+        const ms = g.mission && MISSIONS[g.mission.id]
+        const mission = ms ? `${ms.text} · ${g.mission!.id === 'km' ? `${fmt(g.mission!.have)} / ${fmt(ms.need)} km` : `${g.mission!.have}/${ms.need}`}` : ''
+        setHud((h) => ({ ...h, alt: g.alt, letters: g.letters, target: g.target, score: g.score, combo: g.combo, comboLeft, hint, wind: headwind(g), t: g.t, mission }))
         setMusic(g.alt, g.diving, g.inStorm)
       }
       // конец: самолётик штопором уходит вниз и сминается (или салют за пустой мешок) — и только потом итоги
@@ -459,7 +504,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', vis)
     }
-  }, [phase, touch, bag, authed])
+  }, [phase, touch, bag, authed, mode])
 
   const pick = useCallback((id: number) => {
     if (!game.current) return
@@ -475,7 +520,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       if ((k === ' ' || k === 'Enter') && (phase === 'intro' || phase === 'over')) {
         if ((e.target as HTMLElement).closest?.('a, button')) return
         e.preventDefault()
-        start(phase === 'over' ? mode : mine?.letters.length ? 'mine' : 'daily')
+        start(phase === 'over' ? mode : mine?.letters.length ? 'mine' : 'free')
         return
       }
       if (phase !== 'flying') return
@@ -546,6 +591,8 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
             )}
           </div>
           <WindChip w={hud.wind} />
+          {cond.id !== 'fair' && <p className="am-cond" key={cond.id}><b>{cond.name}</b> · {cond.blurb}</p>}
+          {hud.mission && <p className="am-mission">🎯 {hud.mission}</p>}
           <div className="am-alt" role="meter" aria-label="Altitude" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hud.alt)}>
             <span style={{ transform: `scaleY(${hud.alt / 100})` }} />
           </div>
@@ -559,10 +606,10 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           <ul className="am-bag" aria-label="Mailbag">
             {hud.letters.map((l, i) => (
               <li key={l.id}>
-                <button type="button" className={l.id === hud.target ? 'on' : ''} aria-pressed={l.id === hud.target} onClick={() => pick(l.id)}>
-                  <span className="k" title={LABEL[l.kind ?? 'plain']}>{EMOJI[l.kind ?? 'plain']}</span>
+                <button type="button" className={`${l.id === hud.target ? 'on' : ''}${l.rush !== undefined ? ' rush' : ''}`} aria-pressed={l.id === hud.target} onClick={() => pick(l.id)}>
+                  <span className="k" title={l.rush !== undefined ? 'Rush letter: ×3' : LABEL[l.kind ?? 'plain']}>{l.rush !== undefined ? '⏱' : EMOJI[l.kind ?? 'plain']}</span>
                   <span className="to">@{l.to_handle}</span>
-                  <span className="c">{i < 9 ? `${i + 1} · ` : ''}{place(l.to_country)}</span>
+                  <span className="c">{i < 9 ? `${i + 1} · ` : ''}{l.rush !== undefined ? `${Math.max(0, Math.ceil(l.rush - hud.t))}s · ×3 · ` : ''}{place(l.to_country)}</span>
                 </button>
               </li>
             ))}
@@ -599,13 +646,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           )}
           <div className="am-actions">
             {ownReady ? (
-              <>
-                <button type="button" className="tag am-go" onClick={() => start('mine')}>Fly your mail</button>
-                {!!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel}</button>}
-              </>
+              <button type="button" className="tag am-go" onClick={() => start('mine')}>Fly your mail</button>
             ) : (
-              <button type="button" className="tag am-go" onClick={() => start('daily')} disabled={!daily?.letters.length}>Fly {dayLabel}</button>
+              <button type="button" className="tag am-go" onClick={() => start('free')} disabled={!free?.letters.length}>Fly free</button>
             )}
+            {ownReady && !!free?.letters.length && <button type="button" className="tag ghost" onClick={() => start('free')}>Free flight</button>}
+            {!!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel} · board</button>}
           </div>
           {!authed && (
             <p className="am-login">
@@ -632,7 +678,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
         const link = `${location.origin}/play/r/${code}`
         const text = bag.daily
           ? `${dailyShare({ day: bag.daily, countries, score: g.score, hot, won: g.won })}\nFly the same sky today:`
-          : shareText({ delivered: g.delivered, km: g.km, score: g.score, won: g.won, guest: false, me: bag.handle, bag: bag.bag })
+          : shareText({ delivered: g.delivered, km: g.km, score: g.score, won: g.won, guest: mode !== 'mine', me: bag.handle, bag: bag.bag })
         const url = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`
         const line = tallyLine(bag.bag)
         const record = Math.round(g.score) >= best && g.score > 0
@@ -645,7 +691,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
               <strong>{g.delivered.length}</strong> {g.delivered.length === 1 ? 'letter' : 'letters'} ·{' '}
               <strong>{unique.length}</strong> {unique.length === 1 ? 'country' : 'countries'} ·{' '}
               <strong>{fmt(g.km)}</strong> km{g.caught ? <> · <strong>{g.caught}</strong> caught</> : null}
+              {g.missionsDone ? <> · <strong>{g.missionsDone}</strong> {g.missionsDone === 1 ? 'mission' : 'missions'}</> : null}
             </p>
+            {g.cond.id !== 'fair' && <p className="fine">Weather: {g.cond.name}</p>}
             {promoted && (
               <p className="am-promo">Promoted: <b>{promoted.name}</b> · {NAMES[promoted.plane]} unlocked</p>
             )}
@@ -678,8 +726,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
                 <XMark /> Share your route
               </a>
               <button type="button" className="tag ghost" onClick={() => start(mode)}>Fly again</button>
-              {mode === 'mine' && !!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel}</button>}
-              {mode === 'daily' && ownReady && <button type="button" className="tag ghost" onClick={() => start('mine')}>Your mail</button>}
+              {mode !== 'daily' && !!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel}</button>}
+              {mode !== 'free' && !!free?.letters.length && <button type="button" className="tag ghost" onClick={() => start('free')}>Free flight</button>}
+              {mode !== 'mine' && ownReady && <button type="button" className="tag ghost" onClick={() => start('mine')}>Your mail</button>}
             </div>
             {!authed && (
               <p className="am-login">

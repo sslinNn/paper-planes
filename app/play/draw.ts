@@ -1,6 +1,6 @@
 import { H, land, path, projection, W } from '@/lib/geo'
 import { countryName } from '@/lib/country'
-import { active, DELIVER_R, SPEED, targetPoint, THERMAL_CHARGE, STORM_LIFE, wind, type Game, type Letter } from '@/lib/airmail'
+import { active, DELIVER_R, SPEED, targetPoint, THERMAL_CHARGE, STORM_LIFE, wind, type Game, type Hazard, type Letter } from '@/lib/airmail'
 import { AIRFRAMES } from '@/lib/airframes'
 import type { PlaneModel } from '@/lib/patrons'
 
@@ -263,8 +263,109 @@ function drawLetters(ctx: CanvasRenderingContext2D, letters: Letter[], target: n
       ctx.lineTo(x + w / 2, y - h / 2)
       ctx.stroke()
     }
+    if (l.rush !== undefined) {
+      // кольцо таймера тает по часовой стрелке
+      const left = Math.max(0, l.rush - t) / 16
+      ctx.strokeStyle = C.pink
+      ctx.lineWidth = 3 / z
+      ctx.beginPath()
+      ctx.arc(x, y, 13 / z + 4, -Math.PI / 2, -Math.PI / 2 + left * Math.PI * 2)
+      ctx.stroke()
+      label(ctx, `⏱ ${Math.ceil(Math.max(0, l.rush - t))}s`, x, y - 20 / z - 4, z, C.pink, 12)
+    }
     if (n < 3) label(ctx, n === 2 ? '…' : `@${l.to_handle}`, x, y + h + (12 + n * 13) / z, z, on ? C.pink : C.soot)
   }
+}
+
+// события: шар (подъём), клин гусей (сбивает), полоса порыва (сносит вбок, сначала видна бледно)
+function drawHazards(ctx: CanvasRenderingContext2D, hs: Hazard[], v: View, t: number) {
+  for (const h of hs) {
+    if (h.type === 'balloon') {
+      const y = h.y + Math.sin(t * 2 + h.born) * 1.5
+      ctx.strokeStyle = C.soot
+      ctx.lineWidth = 0.6 / v.z + 0.2
+      ctx.beginPath()
+      ctx.moveTo(h.x - 3, y + 5)
+      ctx.lineTo(h.x - 1.6, y + 10)
+      ctx.moveTo(h.x + 3, y + 5)
+      ctx.lineTo(h.x + 1.6, y + 10)
+      ctx.stroke()
+      ctx.fillStyle = C.pink
+      ctx.beginPath()
+      ctx.ellipse(h.x, y, 6, 7, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = C.blue
+      ctx.beginPath()
+      ctx.ellipse(h.x, y, 2.2, 7, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      ctx.fillStyle = C.soot
+      ctx.fillRect(h.x - 1.8, y + 10, 3.6, 2.6)
+      label(ctx, 'lift!', h.x, y - 11, v.z, C.pink, 10)
+    }
+    if (h.type === 'geese') {
+      const a = Math.atan2(h.vy, h.vx)
+      ctx.save()
+      ctx.translate(h.x, h.y)
+      ctx.rotate(a)
+      ctx.strokeStyle = h.hit ? 'rgb(29 29 27 / .35)' : C.soot
+      ctx.lineWidth = 1.3 / v.z + 0.3
+      ctx.lineCap = 'round'
+      const flap = Math.sin(t * 12) * 1.2
+      for (const [bx, by] of [[0, 0], [-4, -3.5], [-4, 3.5], [-8, -7], [-8, 7]]) {
+        ctx.beginPath()
+        ctx.moveTo(bx - 2, by - 2.2 - flap)
+        ctx.lineTo(bx, by)
+        ctx.lineTo(bx - 2, by + 2.2 + flap)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
+    if (h.type === 'gust') {
+      const live = t - h.born > 1.5
+      const half = v.vw / 2 / v.z
+      const x0 = v.cx - half - 20, x1 = v.cx + half + 20
+      ctx.fillStyle = `rgb(0 120 191 / ${live ? 0.13 : 0.05 + 0.04 * Math.sin(t * 10)})`
+      ctx.fillRect(x0, h.y - h.h, x1 - x0, h.h * 2)
+      ctx.strokeStyle = `rgb(0 120 191 / ${live ? 0.7 : 0.35})`
+      ctx.lineWidth = 1.4 / v.z
+      ctx.beginPath()
+      for (let x = Math.floor(x0 / 24) * 24; x < x1; x += 24) {
+        const px = x + ((t * 40 * h.dir) % 24)
+        for (const dy of [-h.h * 0.5, h.h * 0.5]) {
+          ctx.moveTo(px - h.dir * 5, h.y + dy - 3)
+          ctx.lineTo(px, h.y + dy)
+          ctx.lineTo(px - h.dir * 5, h.y + dy + 3)
+        }
+      }
+      ctx.stroke()
+      if (!live) label(ctx, 'gust incoming', v.cx, h.y - h.h - 3, v.z, C.blue, 10)
+    }
+  }
+}
+
+// ночь и туман: вуаль с окном видимости вокруг самолётика
+function drawVeil(ctx: CanvasRenderingContext2D, v: View, g: Game) {
+  const kind = g.cond.veil
+  if (!kind) return 0
+  ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0)
+  const [px, py] = toScreen(v, g.x, g.y)
+  const r0 = Math.min(v.vw, v.vh) * (kind === 'night' ? 0.24 : 0.2)
+  const grad = ctx.createRadialGradient(px, py, r0, px, py, r0 * 2.1)
+  const rgb = kind === 'night' ? '14 17 38' : '245 243 235'
+  grad.addColorStop(0, `rgb(${rgb} / 0)`)
+  grad.addColorStop(1, `rgb(${rgb} / ${kind === 'night' ? 0.84 : 0.93})`)
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, v.vw, v.vh)
+  if (kind === 'night') {
+    ctx.fillStyle = 'rgb(245 243 235 / .7)'
+    for (let i = 0; i < 60; i++) {
+      const sx = (hash(i, 1) * v.vw + v.cx * 0.3 * v.z) % v.vw
+      const sy = hash(i, 2) * v.vh
+      if (Math.hypot(sx - px, sy - py) > r0 * 1.8) ctx.fillRect(sx, sy, 1.5, 1.5)
+    }
+  }
+  return r0
 }
 
 function drawClouds(ctx: CanvasRenderingContext2D, v: View, t: number) {
@@ -360,6 +461,7 @@ export function drawWorld(
     if (!off) drawWind(ctx, v, g.t)
     drawTrail(ctx, g.trail.concat([[g.x, g.y]]), v.z)
     drawLetters(ctx, g.letters, g.target, v.z, g.t)
+    drawHazards(ctx, g.hazards, v, g.t)
     // круг сброса лопается и расходится
     for (const r of fx.rings) {
       const p = 1 - r.life / r.max
@@ -430,17 +532,29 @@ export function drawWorld(
       ctx.globalAlpha = 1
     }
   }
-  // стрелка к цели за экраном
+  const sight = drawVeil(ctx, v, g)
+  // стрелка к цели за экраном (в ночи и тумане — у самолётика, если цель вне окна видимости)
   const a = active(g)
   if (!a || pose.crash) return
   ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0)
   const [tx, ty] = toScreen(v, ...targetPoint(a))
+  const [px, py] = toScreen(v, g.x, g.y)
   const m = 34
-  if (tx > m && ty > m && tx < v.vw - m && ty < v.vh - m) return
-  const ang = Math.atan2(ty - v.vh / 2, tx - v.vw / 2)
-  const k = Math.min((v.vw / 2 - m) / Math.abs(Math.cos(ang) || 1e-6), (v.vh / 2 - m) / Math.abs(Math.sin(ang) || 1e-6))
+  const onScreen = tx > m && ty > m && tx < v.vw - m && ty < v.vh - m
+  let ax: number, ay: number, ang: number
+  if (sight && Math.hypot(tx - px, ty - py) > sight) {
+    ang = Math.atan2(ty - py, tx - px)
+    ax = px + Math.cos(ang) * sight * 0.8
+    ay = py + Math.sin(ang) * sight * 0.8
+  } else if (onScreen) return
+  else {
+    ang = Math.atan2(ty - v.vh / 2, tx - v.vw / 2)
+    const k = Math.min((v.vw / 2 - m) / Math.abs(Math.cos(ang) || 1e-6), (v.vh / 2 - m) / Math.abs(Math.sin(ang) || 1e-6))
+    ax = v.vw / 2 + Math.cos(ang) * k
+    ay = v.vh / 2 + Math.sin(ang) * k
+  }
   ctx.save()
-  ctx.translate(v.vw / 2 + Math.cos(ang) * k, v.vh / 2 + Math.sin(ang) * k)
+  ctx.translate(ax, ay)
   ctx.rotate(ang)
   ctx.fillStyle = C.pink
   ctx.strokeStyle = C.soot

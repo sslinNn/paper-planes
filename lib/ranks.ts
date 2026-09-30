@@ -31,7 +31,7 @@ export const TRAIT: Record<PlaneModel, string> = {
 // ponytail: счёт считает клиент — это только отсечка невозможного, не античит; серверный пересчёт забега, если начнут мухлевать
 export const maxScore = (delivered: number) => delivered * 21000 + 10000
 
-export type Run = { day: number; mode: 'daily' | 'mine'; score: number; delivered: number; km: number; countries: string[] }
+export type Run = { day: number; mode: 'daily' | 'mine' | 'free'; score: number; delivered: number; km: number; countries: string[] }
 
 const int = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi
 
@@ -40,8 +40,9 @@ export function runRequest(body: unknown, today: number): Run | null {
   if (!body || typeof body !== 'object') return null
   const { day, mode, score, delivered, km, countries } = body as Record<string, unknown>
   if (!int(day, today - 1, today)) return null
-  if (mode !== 'daily' && mode !== 'mine') return null
-  if (!int(delivered, 0, 20) || !int(km, 0, 200000)) return null
+  if (mode !== 'daily' && mode !== 'mine' && mode !== 'free') return null
+  // бесконечный мешок: в свободном полёте писем может быть много — потолок щедрый, счёт всё равно режет maxScore
+  if (!int(delivered, 0, 200) || !int(km, 0, 2000000)) return null
   if (!int(score, 0, maxScore(delivered as number))) return null
   if (!Array.isArray(countries) || countries.length !== delivered || !countries.every((c) => typeof c === 'string' && /^[A-Z]{2}$/.test(c))) return null
   return { day: day as number, mode, score: score as number, delivered: delivered as number, km: km as number, countries: countries as string[] }

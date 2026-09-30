@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { countryAt, delivered, headwind, newGame, select, shareText, step, tally, targetPoint, wind, wrapDx, type Game, type Letter } from './airmail.ts'
+import { CONDS, countryAt, delivered, headwind, MISSIONS, newGame, select, shareText, step, tally, targetPoint, wind, wrapDx, type Game, type Letter } from './airmail.ts'
 import { at, projection, W } from './geo.ts'
 
 const L = (id: number, to_country: string | null, kind: Letter['kind'] = null, to_handle = `u${id}`): Letter =>
@@ -218,4 +218,80 @@ test('airframes fly differently: glider sinks slower than dart, crane holds up i
     return g.alt
   }
   assert.ok(storm('crane') > storm('dart'))
+})
+
+test('endless bag: each delivery draws the next letter from the pool; the run is won only when both are empty', () => {
+  const g = newGame([L(1, 'DE')], [], [2.35, 48.85], [], 'dart', { pool: [L(2, 'JP'), L(3, 'BR')] })
+  g.left = true
+  onTarget(g, g.letters[0])
+  const ev = step(g, still, 0.01, rand)
+  assert.equal(ev[0].type, 'delivered')
+  assert.deepEqual(g.letters.map((l) => l.id), [2])
+  assert.equal(g.pool.length, 1)
+  assert.equal(g.done, false)
+})
+
+test('conditions: jet stream doubles the wind, monsoon brings storms early', () => {
+  const fair = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  const jet = newGame([L(1, 'JP')], [], [10.4, 51.1], [], 'dart', { cond: CONDS.jet })
+  fair.heading = jet.heading = 0
+  assert.ok(Math.abs(headwind(jet) - 2 * headwind(fair)) < 1e-9)
+  const monsoon = newGame([L(1, 'AQ')], [{ iso: 'US', hot: 1, warm: 0, total: 3 }], [10.4, 51.1], [], 'dart', { cond: CONDS.monsoon })
+  for (let i = 0; i < 120; i++) { step(monsoon, circle, 0.05, rand); monsoon.alt = 100 } // 6 с
+  assert.ok(monsoon.storms.length >= 5)
+})
+
+test('balloon lifts, geese knock you down, a gust shoves you sideways', () => {
+  const g = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  g.alt = 40
+  g.hazards.push({ type: 'balloon', x: g.x, y: g.y, born: 0 })
+  assert.ok(step(g, still, 0.01, rand).some((e) => e.type === 'balloon'))
+  assert.ok(g.alt > 70)
+  g.hazards.push({ type: 'geese', x: g.x, y: g.y, vx: 0, vy: 0, born: g.t, hit: false })
+  const before = g.alt
+  assert.ok(step(g, still, 0.01, rand).some((e) => e.type === 'geese'))
+  assert.ok(g.alt < before - 10)
+  const calm = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  const gusty = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  gusty.hazards.push({ type: 'gust', y: gusty.y, h: 20, dir: 1, born: -5 })
+  step(calm, still, 0.05, rand)
+  step(gusty, still, 0.05, rand)
+  assert.ok(gusty.x - calm.x > 0.5)
+})
+
+test('rush letters pay triple and burn when the timer runs out', () => {
+  const g = newGame([L(1, 'JP'), { ...L(2, 'DE'), rush: 5 }], [], [2.35, 48.85])
+  g.left = true
+  select(g, 2)
+  onTarget(g, g.letters[1])
+  const [e] = step(g, still, 0.01, rand)
+  assert.equal(e.type, 'delivered')
+  const plain = newGame([L(1, 'JP'), L(2, 'DE')], [], [2.35, 48.85])
+  plain.left = true
+  select(plain, 2)
+  onTarget(plain, plain.letters[1])
+  const [p] = step(plain, still, 0.01, rand)
+  if (e.type === 'delivered' && p.type === 'delivered') assert.equal(e.points, p.points * 3)
+  const late = newGame([L(1, 'JP'), { ...L(2, 'BR'), rush: 0.02 }], [], [2.35, 48.85])
+  step(late, still, 0.05, rand)
+  assert.ok(!late.letters.some((l) => l.id === 2))
+})
+
+test('missions: completing one rewards and hands out the next', () => {
+  const g = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  g.mission = { id: 'balloon', have: 0 }
+  g.alt = 30
+  g.hazards.push({ type: 'balloon', x: g.x, y: g.y, born: 0 })
+  const ev = step(g, still, 0.01, rand)
+  assert.ok(ev.some((e) => e.type === 'mission'))
+  assert.equal(g.missionsDone, 1)
+  assert.ok(g.score >= 300)
+  assert.notEqual(g.mission?.id, 'balloon')
+  assert.ok(MISSIONS[g.mission!.id].text.length > 0)
+})
+
+test('events appear on their own during a run', () => {
+  const g = newGame([L(1, 'AQ')], [], [10.4, 51.1])
+  for (let i = 0; i < 400 && !g.hazards.length; i++) { step(g, circle, 0.05, rand); g.alt = 100 }
+  assert.ok(g.hazards.length > 0 || g.letters.some((l) => l.rush))
 })

@@ -205,3 +205,5 @@ export function stopMusic() {
   m.bus.gain.setTargetAtTime(0, ac.currentTime, 0.4)
   setTimeout(() => m.bus.disconnect(), 2000)
 }
+// гуси — два гудка
+export const honk = () => [0, 0.14].forEach((d) => tone(320, 270, 0.1, 0.11, 'square', d))

@@ -654,3 +654,16 @@ html { scrollbar-color: var(--blue) var(--paper); }
   .am-stamp .pts { font-size: 1.6rem; }
 }
 .not-found-actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+
+/* ---------- глобус главной ---------- */
+.globe-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--paper); }
+.globe-canvas { position: absolute; inset: 0; display: block; touch-action: none; cursor: grab; }
+.globe-canvas:active { cursor: grabbing; }
+.globe-hint { position: absolute; left: 50%; bottom: 64px; translate: -50% 0; margin: 0; pointer-events: none; padding: 6px 10px; background: var(--soot); color: var(--paper);
+  font: 700 .85rem var(--font-text); animation: hint 6s var(--ease-out) forwards; }
+.stage[hidden] { display: none; }
+.view-toggle { position: absolute; left: var(--pad); bottom: 56px; z-index: 7; display: flex; border: 1.5px solid var(--soot); background: var(--paper); }
+.view-toggle button { min-height: 36px; padding: 0 12px; border: 0; background: transparent; color: var(--soot); font: 800 .85rem var(--font-text); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.view-toggle button + button { border-left: 1.5px solid var(--soot); }
+.view-toggle button[aria-pressed="true"] { background: var(--pink); }
+.view-toggle button:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }

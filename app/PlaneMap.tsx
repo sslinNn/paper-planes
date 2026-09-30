@@ -7,6 +7,7 @@ import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import { AIRFRAMES } from '@/lib/airframes'
 import { Close } from './icons'
 import Live from './Live'
+import Globe from './Globe'
 import { OWNER } from '@/lib/site'
 
 type Point = [number, number]
@@ -70,6 +71,8 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
   // /?spot — режим «ткни, где живёшь»: тап по своей стране сохраняет точку
   const [placing, setPlacing] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
+  // вид по умолчанию — глобус; плоская карта остаётся для карточек стран, точки дома и щипка
+  const [view, setView] = useState<'globe' | 'map'>('globe')
   const people = useMemo(() => withMySpot(locals, me, mySpot), [locals, me, mySpot])
   const homes = useMemo<Homes>(() => new Map(people.map((u) => [u.handle, u])), [people])
   const homesRef = useRef(homes)
@@ -244,10 +247,17 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
       setMe(meRef.current)
       setMyCountry(m?.country ?? null)
       setMySpot(m?.spot ?? null)
-      if (m?.handle && new URLSearchParams(location.search).has('spot')) setPlacing(true)
-      // /?country=BR — ссылка с табло /traffic: сразу открыть карточку страны
+      if (m?.handle && new URLSearchParams(location.search).has('spot')) {
+        setPlacing(true)
+        setView('map')
+      }
+      // /?country=BR — ссылка с табло /traffic: сразу открыть карточку страны (она живёт на плоской карте)
       const linked = new URLSearchParams(location.search).get('country')
-      if (linked && /^[A-Z]{2}$/.test(linked)) setFocus(linked)
+      if (linked && /^[A-Z]{2}$/.test(linked)) {
+        setFocus(linked)
+        setView('map')
+      }
+      if (new URLSearchParams(location.search).get('view') === 'map') setView('map')
       setLocals(ls)
       // ref сразу, не дожидаясь рендера: первая волна взлетает раньше, чем обновится homes
       homesRef.current = new Map(withMySpot(ls, meRef.current, m?.spot ?? null).map((u) => [u.handle, u]))
@@ -363,7 +373,12 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
             built by <a href={`https://x.com/${OWNER}`} target="_blank" rel="noopener">@{OWNER}</a>
           </p>
         </header>
-        <div className="stage" ref={stage} onPointerDown={() => setPanned(true)}>
+        <div className="view-toggle" role="group" aria-label="View">
+          <button type="button" aria-pressed={view === 'globe'} onClick={() => setView('globe')}>Globe</button>
+          <button type="button" aria-pressed={view === 'map'} onClick={() => setView('map')}>Map</button>
+        </div>
+        {view === 'globe' && <Globe planes={history} lead={star ?? me} />}
+        <div className="stage" ref={stage} onPointerDown={() => setPanned(true)} hidden={view === 'globe'}>
           {/* холст: два слоя с одной геометрией. Внизу статичная карта, она рисуется один раз на масштаб;
               сверху прозрачное небо с самолётиками, его перерисовка не трогает тяжёлую карту с растром */}
           <div className="canvas" ref={canvas} style={{ aspectRatio: `${W} / ${H.toFixed(1)}` }}>
@@ -442,12 +457,14 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
           </div>
         </div>
 
-        <div className="zoom">
-          <button type="button" aria-label="Zoom in" onClick={() => zoomAt(zoom.current * 1.6)}>+</button>
-          <button type="button" aria-label="Zoom out" onClick={() => zoomAt(zoom.current / 1.6)}>−</button>
-        </div>
+        {view === 'map' && (
+          <div className="zoom">
+            <button type="button" aria-label="Zoom in" onClick={() => zoomAt(zoom.current * 1.6)}>+</button>
+            <button type="button" aria-label="Zoom out" onClick={() => zoomAt(zoom.current / 1.6)}>−</button>
+          </div>
+        )}
         <Arrivals planes={history.slice(0, 12)} />
-        {!panned && !placing && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
+        {view === 'map' && !panned && !placing && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
         {(placing || hint) && (
           <p className="placing-hint" role="status">
             {hint ?? (myCountry ? <>Tap where you live in {countryName(myCountry)}. Everyone sees it, so roughly is fine.</> : <>Pick your country on <a href="/me">your page</a> first.</>)}

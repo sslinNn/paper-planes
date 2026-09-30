@@ -548,3 +548,4 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .tag.ghost { box-shadow: inset 0 0 0 1.5px var(--soot); }
 /* итоги на десктопе — в углу, чтобы маршрут на карте было видно */
 @media (min-width: 721px) { .am-result { left: 24px; top: auto; bottom: 24px; translate: none; width: min(460px, calc(100vw - 48px)); } }
+.masthead .play-link { order: 5; background: var(--paper); box-shadow: inset 0 0 0 1.5px var(--soot); }

@@ -26,7 +26,8 @@ No posting, no bot, no prompt: people keep talking on X as usual and the map vis
 
 ## Capabilities and Constraints
 
-- Countries only (ISO alpha-2); never coordinates. Reply text is never stored or shown.
+- Countries only (ISO alpha-2); never coordinates. Reply text is never stored or shown; Jev (TypeSafe) reads each reply once at collection to label its letter kind (warm, hot, joke, question, plain).
+- /play is AIRMAIL, a flight game over the same map: letters are real replies from the database, weather comes from Jev's labels, deliveries stamp the passport. No extra X API calls per player.
 - Unknown country = Antarctica.
 - Hovering a country shows who posts from there (handles, link to their X profile), how many planes, and highlights that country's routes.
 - Stack: Next.js 16 on Vercel, Neon Postgres, Better Auth; map in SVG via d3-geo + world-atlas (110m).

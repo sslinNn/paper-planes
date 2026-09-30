@@ -12,6 +12,7 @@ import { Arrow, XMark } from '../icons'
 type Me = {
   handle: string; country: string | null; image?: string | null; stamps?: Stamp[]
   patronSince?: string | null; plane?: PlaneModel; donations?: boolean; spot?: [number, number] | null
+  airmail?: Stamp[]
 }
 const options = countryNames()
 
@@ -110,7 +111,9 @@ export default function MePage() {
           </a>
         </p>
       )}
-      <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} />
+      <p className="lede"><Link className="tag" href="/play">Play Airmail: fly your replies <Arrow /></Link></p>
+      <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} airmail={me.airmail ?? []} />
+      <p className="fine">Jev reads each reply once to fold it into an Airmail letter; the text is never stored.</p>
       <Support patronSince={me.patronSince ?? null} plane={me.plane ?? 'dart'} open={!!me.donations} onPlane={setPlane} />
       <p className="lede"><Link className="tag" href="/">See your planes on the map <Arrow /></Link></p>
     </main>

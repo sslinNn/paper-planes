@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Paper Planes ✈️ + AIRMAIL
 
-## Getting Started
+**Every reply on X is a paper plane.** Log in with X (read-only, we never post) and every reply you write takes off from your country and flies across a live world map to the country of the person you replied to. No bot and no prompt: you keep talking on X as usual, and the map draws it.
 
-First, run the development server:
+**AIRMAIL** (`/play`) turns your replies into a game. Every reply you've sent is a letter; fly it there before your paper plane hits the ground.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Your real replies are the levels.** Guests fly strangers' letters from the public sky. Log in and your mailbag holds your own replies, addressed to real people.
+- **Real atmosphere.** Trade winds blow west, the westerlies blow east. Moscow → New York is faster if you drop south and take the Columbus route.
+- **Jev reads every reply once.** [TypeSafe](https://typesafe.ai)'s System One model folds each reply into a letter: 💌 warm ones glide long, 🔥 hot takes fly fast and burn, 😂 jokes ride the wind, ❓ questions lift you double on delivery. Only the label is stored, never the text.
+- **The weather is made of what people are saying.** Storms form over countries where X is arguing. Pink thermals rise where people are kind.
+- **Your shadow is your altitude.** No numbers on screen: the higher you fly, the further your shadow falls.
+- **Stamps land in your passport** (`/me`), each with a greeting in the local language. When you share a run on X, it tags up to three of the people whose mail you delivered.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Also in the box: a pilot card per handle (`/p/@handle`), an air-traffic board of the busiest routes (`/traffic`), and a passport that fills with country stamps as your planes land.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How it's built
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Next.js 16** (App Router) on Vercel, **Neon Postgres**, **Better Auth** (X OAuth 2.0, read-only scopes).
+- Map: **d3-geo** + world-atlas, a Miller projection with the seam in the Bering Strait. The main map is SVG. The game draws on **Canvas 2D** from the same projected country outlines, in a world that wraps around.
+- Game core is pure TypeScript (`lib/airmail.ts`): winds by latitude, altitude, thermals, storms and delivery by point-in-country. It is tested with `node --test`. The balance was tuned with an autopilot simulation.
+- **All sound is synthesized** with WebAudio (rubber-stamp thud, paper rustle, wind). No audio files.
+- Jev (`lib/jev.ts`): one Choice question per reply, batched 20 per request. The collector labels new replies and back-fills old ones with owned reads, so no extra X API spend per player.
+- `prefers-reduced-motion` is respected: no shake, no confetti, no camera lead.
 
-## Learn More
+## Run it
 
-To learn more about Next.js, take a look at the following resources:
+    npm install
+    cp .env.example .env.local   # fill in the keys
+    node --env-file=.env.local scripts/migrate.ts
+    npm run dev
+    npm test
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built for [The Build Games](https://canivibecodeit.com/thebuildgames), September 2026.

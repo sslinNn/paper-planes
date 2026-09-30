@@ -1,10 +1,10 @@
 'use client'
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { at, projection } from '@/lib/geo'
+import { at, projection, W } from '@/lib/geo'
 import { countryName } from '@/lib/country'
 import { EMOJI, LABEL, type Kind } from '@/lib/letters'
-import { active, countryAt, newGame, select, shareText, step, tallyLine, type CountryWeather, type Game, type GameEvent, type Letter } from '@/lib/airmail'
+import { active, countryAt, newGame, select, shareText, step, tallyLine, targetPoint, type CountryWeather, type Game, type GameEvent, type Letter } from '@/lib/airmail'
 import { track } from '@/lib/track'
 import { PassportStamp, RubberFilter } from '../me/Passport'
 import { C, drawResult, drawWorld, toScreen, zoomFor, type Particle, type View } from './draw'
@@ -29,6 +29,26 @@ async function loadBag(): Promise<Bag> {
 
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const place = (iso: string | null) => (iso && iso !== 'AQ' ? countryName(iso) : 'Antarctica')
+
+// камера с упреждением по курсу; на шве карты прыгает вместе с самолётиком
+function follow(v: View, g: Game, dt: number, calm: boolean) {
+  const look = calm ? 0 : 40
+  const tx = g.x + Math.cos(g.heading) * look
+  const ty = g.y + Math.sin(g.heading) * look
+  if (Math.abs(tx - v.cx) > W / 2) v.cx += Math.sign(tx - v.cx) * W
+  v.cx += (tx - v.cx) * Math.min(1, dt * 3)
+  v.cy += (ty - v.cy) * Math.min(1, dt * 3)
+}
+
+// курс прямо на активное письмо — для демо-полёта за карточкой intro
+function autopilot(g: Game) {
+  const a = active(g)
+  if (!a) return null
+  const [tx, ty] = targetPoint(a)
+  let dx = tx - g.x
+  if (Math.abs(dx) > W / 2) dx -= Math.sign(dx) * W
+  return Math.atan2(ty - g.y, dx)
+}
 
 function readBest() {
   try {
@@ -129,6 +149,37 @@ export default function Airmail() {
     return () => removeEventListener('resize', fit)
   }, [])
 
+  // attract mode: пока висит intro, самолётик сам развозит письма за карточкой — сцена живая с первого кадра
+  useEffect(() => {
+    if (phase !== 'intro' || !bag?.letters.length) return
+    const ctx = canvas.current!.getContext('2d')!
+    const calm = reduced()
+    const fresh = () => newGame(bag.letters, bag.weather, bag.fallback ? null : (bag.home ?? (bag.homeCountry ? at(bag.homeCountry) : null)))
+    let g = fresh()
+    view.current = { ...view.current, cx: g.x, cy: g.y }
+    let raf = 0
+    let last = performance.now()
+    const frame = (now: number) => {
+      const dt = (now - last) / 1000
+      last = now
+      step(g, { aim: autopilot(g), turn: 0 }, dt)
+      g.alt = Math.max(g.alt, 45) // демо не падает
+      if (g.done) g = fresh()
+      follow(view.current, g, dt, calm)
+      // на телефоне карточка внизу — самолётик летает в верхней трети
+      const v = view.current
+      drawWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : v, g, [], 0)
+      if (!calm) raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    const vis = () => (last = performance.now())
+    document.addEventListener('visibilitychange', vis)
+    return () => {
+      cancelAnimationFrame(raf)
+      document.removeEventListener('visibilitychange', vis)
+    }
+  }, [phase, bag])
+
   // игровой цикл
   useEffect(() => {
     if (phase !== 'flying') return
@@ -148,14 +199,8 @@ export default function Airmail() {
       if (turn) input.current.aim = null
       onEvents.current(step(g, { aim: input.current.aim, turn }, dt), g)
 
-      // камера с упреждением по курсу; на шве карты прыгает вместе с самолётиком
       const v = view.current
-      const look = calm ? 0 : 40
-      const tx = g.x + Math.cos(g.heading) * look
-      const ty = g.y + Math.sin(g.heading) * look
-      if (Math.abs(tx - v.cx) > 500) v.cx += Math.sign(tx - v.cx) * 1000
-      v.cx += (tx - v.cx) * Math.min(1, dt * 3)
-      v.cy += (ty - v.cy) * Math.min(1, dt * 3)
+      follow(v, g, dt, calm)
 
       const k = Math.min(dt, 0.05)
       for (const p of particles.current) {

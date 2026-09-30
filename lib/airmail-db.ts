@@ -27,7 +27,8 @@ export async function guestBag() {
   // письма с известной страной адресата вперёд: мешок из одних «в Антарктиду» скучный. Одно такое — для шутки про пингвинов
   const shuffled = recent.sort(() => Math.random() - 0.5)
   const known = shuffled.filter((p) => p.to_country)
-  const letters = [...known.slice(0, 11), ...shuffled.filter((p) => !p.to_country).slice(0, 12 - Math.min(11, known.length))].map(toLetter)
+  const fog = known.length >= 4 ? 1 : 6 - known.length
+  const letters = [...known.slice(0, 11), ...shuffled.filter((p) => !p.to_country).slice(0, fog)].map(toLetter)
   return { guest: true, handle: null, home: null, homeCountry: null, letters, weather, bag: tally(letters) }
 }
 

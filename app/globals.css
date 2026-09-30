@@ -684,9 +684,9 @@ html { scrollbar-color: var(--blue) var(--paper); }
   .wars .tag { display: none; } /* в шапке уже есть «Play Airmail» */
 }
 .am-alert { margin: 0; padding: 4px 8px; background: var(--pink); color: var(--soot); font: 800 .8rem var(--font-text); border: 1.5px solid var(--soot); }
-.am-wars { display: grid; gap: 4px; }
+.am-wars { display: grid; gap: 4px; min-width: 0; }
 .am-wars p, .am-wars label { margin: 0; }
-.am-wars select { font: 700 .85rem var(--font-text); padding: 2px 4px; border: 1.5px solid var(--soot); background: var(--paper); color: var(--soot); max-width: 100%; }
+.am-wars select { display: block; width: 100%; margin-top: 4px; font: 700 .85rem var(--font-text); padding: 4px 6px; min-height: 36px; border: 1.5px solid var(--soot); background: var(--paper); color: var(--soot); max-width: 100%; }
 .am-event b, .am-claim { color: var(--pink); }
 .am-claim { margin: 0; font: 800 .95rem var(--font-text); }
 .am-claim a { color: var(--blue); }

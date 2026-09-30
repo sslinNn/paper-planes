@@ -461,14 +461,14 @@ function drawArrow(ctx: CanvasRenderingContext2D, v: View, g: Game, S: (x: numbe
 }
 
 // итоги: глобус медленно крутится, по нему весь маршрут и чернильные штампы
-export function drawGlobeResult(ctx: CanvasRenderingContext2D, vw: number, vh: number, dpr: number, g: Game, spin: number) {
+export function drawGlobeResult(ctx: CanvasRenderingContext2D, vw: number, vh: number, dpr: number, g: Game, spin: number, fills?: Map<string, string>) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.fillStyle = C.paper
   ctx.fillRect(0, 0, vw, vh)
   const route = g.trail.concat([[g.x, g.y]]).map(([x, y]) => ll(x, y))
   const mid = route.length > 1 ? geoCentroid({ type: 'LineString', coordinates: route }) : (route[0] ?? [0, 20])
   const cam: Cam = { lon: mid[0] + spin, lat: Math.max(-55, Math.min(55, mid[1])), r: Math.min(vw, vh) * 0.4, cx: vw * (vw > 720 ? 0.66 : 0.5), cy: vh * (vw > 720 ? 0.5 : 0.3) }
-  const proj = drawGlobe(ctx, cam)
+  const proj = drawGlobe(ctx, cam, fills)
   drawArc(ctx, proj, route, C.blue, 3, [6, 6])
   ctx.lineDashOffset = -6
   drawArc(ctx, proj, route, C.pink, 3, [6, 6])

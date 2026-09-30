@@ -440,7 +440,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     let raf = 0
     const frame = (now: number) => {
       const v = view.current
-      drawGlobeResult(ctx, v.vw, v.vh, v.dpr, result, calm ? 0 : Math.sin(((now - t0) / 1000) * 0.3) * 35) // покачивается, маршрут не уходит из кадра
+      drawGlobeResult(ctx, v.vw, v.vh, v.dpr, result, calm ? 0 : Math.sin(((now - t0) / 1000) * 0.3) * 35, fills.current) // покачивается, маршрут не уходит из кадра
       if (!calm) raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)

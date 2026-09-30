@@ -650,12 +650,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
             ) : (
               <button type="button" className="tag am-go" onClick={() => start('free')} disabled={!free?.letters.length}>Fly free</button>
             )}
-            {ownReady && !!free?.letters.length && <button type="button" className="tag ghost" onClick={() => start('free')}>Free flight</button>}
-            {!!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel} · board</button>}
+            {ownReady && !!free?.letters.length && <button type="button" className="tag outline" onClick={() => start('free')}>Free flight</button>}
+            {!!daily?.letters.length && <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel} · board</button>}
           </div>
           {!authed && (
             <p className="am-login">
-              <button type="button" className="tag ghost" onClick={logIn}><XMark /> Log in to fly your own replies</button>
+              <button type="button" className="tag outline" onClick={logIn}><XMark /> Log in to fly your own replies</button>
               <span className="fine">Read-only. We never post.</span>
             </p>
           )}
@@ -725,14 +725,14 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
               <a className="tag" href={url} target="_blank" rel="noopener" onClick={() => track('airmail_share', { delivered: g.delivered.length, score: Math.round(g.score), mode })}>
                 <XMark /> Share your route
               </a>
-              <button type="button" className="tag ghost" onClick={() => start(mode)}>Fly again</button>
-              {mode !== 'daily' && !!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel}</button>}
-              {mode !== 'free' && !!free?.letters.length && <button type="button" className="tag ghost" onClick={() => start('free')}>Free flight</button>}
-              {mode !== 'mine' && ownReady && <button type="button" className="tag ghost" onClick={() => start('mine')}>Your mail</button>}
+              <button type="button" className="tag outline" onClick={() => start(mode)}>Fly again</button>
+              {mode !== 'daily' && !!daily?.letters.length && <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel}</button>}
+              {mode !== 'free' && !!free?.letters.length && <button type="button" className="tag outline" onClick={() => start('free')}>Free flight</button>}
+              {mode !== 'mine' && ownReady && <button type="button" className="tag outline" onClick={() => start('mine')}>Your mail</button>}
             </div>
             {!authed && (
               <p className="am-login">
-                <button type="button" className="tag ghost" onClick={logIn}><XMark /> Log in to fly your own replies</button>
+                <button type="button" className="tag outline" onClick={logIn}><XMark /> Log in to fly your own replies</button>
               </p>
             )}
             {mode === 'mine' && <p className="fine">Stamps landed in <Link href="/me">your passport</Link>.</p>}

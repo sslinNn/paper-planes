@@ -1,14 +1,19 @@
 import { pool } from './db.ts'
 import { planeRows } from './pilot-db.ts'
-import { tally, type CountryWeather, type Letter } from './airmail.ts'
+import { tally, type CountryWeather, type Letter, type Sky } from './airmail.ts'
 import { isKind } from './letters.ts'
 import type { PlaneRow } from './sky.ts'
 import type { Stamp } from './pilot.ts'
 
 const toLetter = (p: PlaneRow): Letter => ({
-  id: p.id, from_handle: p.from_handle, to_handle: p.to_handle, to_country: p.to_country,
+  id: p.id, from_handle: p.from_handle, to_handle: p.to_handle, to_country: p.to_country, from_country: p.from_country,
   created_at: p.created_at, kind: isKind(p.kind) ? p.kind : null,
 })
+
+// живое небо игры: свежие чужие реплаи с известными странами — летят по своим маршрутам, их можно поймать
+const toSky = (rows: PlaneRow[]): Sky[] =>
+  rows.filter((p) => p.from_country && p.to_country && p.from_country !== p.to_country).slice(0, 60)
+    .map((p) => ({ from_handle: p.from_handle, to_handle: p.to_handle, from_country: p.from_country, to_country: p.to_country }))
 
 // погода: настроение разговоров по странам — и откуда реплай, и куда. Неделя, а если стран мало — всё время
 export async function weatherRows(): Promise<CountryWeather[]> {
@@ -21,9 +26,11 @@ export async function weatherRows(): Promise<CountryWeather[]> {
   return (week.rows.length >= 5 ? week : await q('100 years')).rows
 }
 
-// письма с известной страной адресата вперёд: мешок из одних «в Антарктиду» скучный — туда одно, для шутки про пингвинов
+// письма с известной страной адресата вперёд: мешок из одних «в Антарктиду» скучный — туда одно, для шутки про пингвинов.
+// Письма, которые Jev разметил (💌 🔥 😂 ❓), — первыми: они летают по-разному, в этом и игра
+const labeled = (p: PlaneRow) => (isKind(p.kind) && p.kind !== 'plain' ? 0 : 1)
 function pickLetters(rows: PlaneRow[], n: number): Letter[] {
-  const known = rows.filter((p) => p.to_country)
+  const known = rows.filter((p) => p.to_country).sort((a, b) => labeled(a) - labeled(b))
   const fog = rows.filter((p) => !p.to_country).slice(0, known.length >= 4 ? 1 : 6 - known.length)
   return [...known.slice(0, n - fog.length), ...fog].map(toLetter)
 }
@@ -31,8 +38,9 @@ function pickLetters(rows: PlaneRow[], n: number): Letter[] {
 // гость: 12 случайных из последних 500 самолётиков общего неба
 export async function guestBag() {
   const [recent, weather] = await Promise.all([planeRows('true', [], 500), weatherRows()])
-  const letters = pickLetters(recent.sort(() => Math.random() - 0.5), 12)
-  return { guest: true, handle: null, home: null, homeCountry: null, letters, weather, bag: tally(letters) }
+  const shuffled = recent.sort(() => Math.random() - 0.5)
+  const letters = pickLetters(shuffled, 12)
+  return { guest: true, handle: null, home: null, homeCountry: null, letters, weather, sky: toSky(shuffled), bag: tally(letters) }
 }
 
 // залогиненный: его реплаи и реплаи ему, 20 свежих
@@ -41,10 +49,13 @@ export async function userBag(userId: string) {
     `select u.handle, u.country, u.spot_lon, u.spot_lat, a."accountId" as x_id
      from "user" u join account a on a."userId" = u.id and a."providerId" = 'twitter' where u.id = $1`, [userId])
   if (!u) return null
-  const [rows, weather] = await Promise.all([planeRows('(p.from_x_id = $1 or p.to_x_id = $1)', [u.x_id], 100), weatherRows()])
+  const [rows, weather, recent] = await Promise.all([
+    planeRows('(p.from_x_id = $1 or p.to_x_id = $1)', [u.x_id], 100), weatherRows(), planeRows('p.from_x_id <> $1', [u.x_id], 300),
+  ])
   const letters = pickLetters(rows, 20)
   const home: [number, number] | null = u.spot_lon != null ? [u.spot_lon, u.spot_lat] : null
-  return { guest: false, handle: u.handle as string | null, home, homeCountry: u.country as string | null, letters, weather, bag: tally(letters) }
+  const sky = toSky(recent.sort(() => Math.random() - 0.5))
+  return { guest: false, handle: u.handle as string | null, home, homeCountry: u.country as string | null, letters, weather, sky, bag: tally(letters) }
 }
 
 // штамп только за своё письмо (отправитель или адресат) и один раз

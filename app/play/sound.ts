@@ -68,9 +68,25 @@ function burst(freq: number, q: number, gain: number, dur: number) {
   src.start(t)
 }
 
-// удар резинового штампа: низкий «тук» + шлепок
-export function thud() {
+function tone(freq: number, to: number, gain: number, dur: number, type: OscillatorType = 'sine', delay = 0) {
   if (!ac || muted) return
+  const t = ac.currentTime + delay
+  const o = ac.createOscillator()
+  o.type = type
+  o.frequency.setValueAtTime(freq, t)
+  o.frequency.exponentialRampToValueAtTime(to, t + dur)
+  const g = ac.createGain()
+  g.gain.setValueAtTime(gain, t)
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur)
+  o.connect(g).connect(ac.destination)
+  o.start(t)
+  o.stop(t + dur + 0.02)
+}
+
+// удар резинового штампа: низкий «тук» + шлепок; серия доставок — сверху звенит колокольчик, выше с каждым шагом
+export function thud(combo = 1) {
+  if (!ac || muted) return
+  if (combo > 1) [0, 0.07].forEach((d, i) => tone(660 * 2 ** ((combo - 1 + i * 4) / 12), 660 * 2 ** ((combo - 1 + i * 4) / 12), 0.12, 0.25, 'triangle', d))
   const t = ac.currentTime
   const o = ac.createOscillator()
   o.frequency.setValueAtTime(110, t)
@@ -86,3 +102,8 @@ export function thud() {
 
 export const rustle = () => burst(3200, 1.2, 0.12, 0.14)
 export const crumple = () => [0, 90, 170, 260].forEach((ms) => setTimeout(() => burst(2000 + Math.random() * 2000, 1, 0.25, 0.12), ms))
+
+// поймал чужое письмо — короткий взлёт тона
+export const chirp = () => tone(700, 1500, 0.1, 0.14, 'triangle')
+// мало высоты — сухой писк
+export const beep = () => tone(1200, 1150, 0.06, 0.07, 'square')

@@ -158,6 +158,8 @@ test('score: longer legs and hotter letters pay more; quick chains multiply', ()
   onTarget(g, g.letters[0])
   const [a] = step(g, still, 0.01, rand)
   select(g, 2)
+  g.x += 40 // новый заход: в ту же точку подряд не сбросить
+  step(g, still, 0.01, rand)
   onTarget(g, g.letters[0])
   const [b] = step(g, still, 0.01, rand)
   assert.equal(a.type, 'delivered')
@@ -295,4 +297,20 @@ test('events appear on their own during a run', () => {
   const g = newGame([L(1, 'AQ')], [], [10.4, 51.1])
   for (let i = 0; i < 400 && !g.hazards.length; i++) { step(g, circle, 0.05, rand); g.alt = 100 }
   assert.ok(g.hazards.length > 0 || g.letters.some((l) => l.rush))
+})
+
+test('two letters to the same place: the second needs a fresh approach, no free chain', () => {
+  const g = newGame([L(1, 'DE'), L(2, 'DE'), L(3, 'JP')], [], [2.35, 48.85])
+  g.mission = null
+  g.left = true
+  select(g, 1)
+  onTarget(g, g.letters[0])
+  assert.equal(step(g, still, 0.01, rand)[0]?.type, 'delivered')
+  select(g, 2)
+  onTarget(g, g.letters[0])
+  assert.equal(step(g, still, 0.01, rand).filter((e) => e.type === 'delivered').length, 0, 'still sitting in the same drop circle')
+  g.x += 40 // улетел и вернулся
+  step(g, still, 0.01, rand)
+  onTarget(g, g.letters[0])
+  assert.equal(step(g, still, 0.01, rand)[0]?.type, 'delivered')
 })

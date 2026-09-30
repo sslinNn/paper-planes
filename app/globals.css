@@ -646,7 +646,7 @@ html { scrollbar-color: var(--blue) var(--paper); }
 /* телефон: HUD стопкой слева — счёт, «Now over», ветер, погода, задание; ничего не наезжает на кнопку звука */
 @media (max-width: 720px) {
   .am-over { top: 62px; }
-  .am-chips { top: 102px; }
+  .am-chips { top: 110px; }
   .am-low { top: auto; bottom: 190px; white-space: normal; text-align: center; max-width: calc(100vw - 32px); }
   /* штамп — ниже HUD и меньше, между плашками и самолётиком */
   .am-stamp { top: 29vh; }

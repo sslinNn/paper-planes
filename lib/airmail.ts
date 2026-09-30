@@ -76,6 +76,7 @@ export type Game = {
   trail: [number, number][]; km: number; inStorm: boolean; done: boolean; won: boolean
   pool: Letter[]; cond: Cond; hazards: Hazard[]; nextEvent: number; inGust: boolean; rushSeq: number
   mission: { id: MissionId; have: number } | null; missionsDone: number
+  drop: [number, number] | null // где легло прошлое письмо: следующее — только после нового захода
 }
 
 // ---------- константы (крутятся плейтестом) ----------
@@ -213,7 +214,7 @@ export function newGame(
     startIso: countryAt(origin), left: false, diving: false, plane,
     trail: [[x, y]], km: 0, inStorm: false, done: false, won: false,
     pool: [...(extra.pool ?? [])], cond, hazards: [], nextEvent: FIRST_EVENT, inGust: false, rushSeq: -1,
-    mission: null, missionsDone: 0,
+    mission: null, missionsDone: 0, drop: null,
   }
   nextMission(g, extra.rand ?? Math.random)
   g.target = nearest(g)
@@ -444,15 +445,18 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
     spawnStray(g, rand)
   }
 
-  // доставка: очки за длину плеча и «жар» письма, серия быстрых доставок умножает
+  // доставка: очки за длину плеча и «жар» письма, серия быстрых доставок умножает.
+  // Кружить в одном круге и сбрасывать пачку писем в ту же точку нельзя: сначала отлети на два радиуса
+  if (g.drop && dist(g.x, g.y, g.drop[0], g.drop[1]) > DELIVER_R * 2) g.drop = null
   const letter = active(g)
-  if (letter && !local(g, letter) && reached(g, letter)) {
+  if (letter && !g.drop && !local(g, letter) && reached(g, letter)) {
     g.combo = g.t - g.lastDelivery < COMBO_WINDOW ? g.combo + 1 : 1
     g.lastDelivery = g.t
     const points = Math.round((100 + g.leg / 10) * m.score * Math.min(g.combo, COMBO_MAX) * (letter.rush !== undefined ? 3 : 1))
     g.score += points
     const leg = g.leg
     g.leg = 0
+    g.drop = targetPoint(letter)
     g.alt += DELIVERY_LIFT * m.delivery
     g.letters = g.letters.filter((l) => l.id !== letter.id)
     g.delivered.push(letter)

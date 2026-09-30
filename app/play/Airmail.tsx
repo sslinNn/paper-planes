@@ -600,6 +600,8 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const low = phase === 'flying' && hud.alt < LOW
   const dayLabel = daily?.daily ? `Today’s Mail #${daily.daily}` : 'Today’s Mail'
   const ownReady = !!mine?.letters.length
+  // открытка чужого забега по сегодняшнему мешку: главная кнопка — лететь тот же маршрут и побить счёт
+  const beatable = !!challenge?.day && challenge.day === daily?.daily && !!daily?.letters.length
 
   return (
     <div className={`airmail-stage${low ? ' low' : ''}`}>
@@ -672,19 +674,23 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           <p className="lede">Every reply you’ve sent on X is a letter. <strong>Fly it there.</strong></p>
           {challenge && (
             <p className="am-challenge">
-              Someone scored <strong>{fmt(challenge.score)}</strong>{challenge.day ? <> on Today’s Mail #{challenge.day}</> : null}, delivering {challenge.countries.length} {challenge.countries.length === 1 ? 'letter' : 'letters'}. Beat it.
+              Someone scored <strong>{fmt(challenge.score)}</strong>{challenge.day ? <> on Today’s Mail #{challenge.day}</> : null}, delivering {challenge.countries.length} {challenge.countries.length === 1 ? 'letter' : 'letters'}.
+              {beatable ? ' Same sky, same storms. Beat it.' : challenge.day && daily?.daily && challenge.day !== daily.daily ? ` That sky has flown; today’s is #${daily.daily}.` : ' Beat it.'}
             </p>
           )}
           <div className="am-actions">
-            {ownReady ? (
+            {beatable ? (
+              <button type="button" className="tag am-go" onClick={() => start('daily')}>Beat it: {dayLabel}</button>
+            ) : ownReady ? (
               <button type="button" className="tag am-go" onClick={() => start('mine')}>Fly your mail</button>
             ) : free?.letters.length ? (
               <button type="button" className="tag am-go" onClick={() => start('free')}>Fly free</button>
             ) : daily?.letters.length ? (
               <button type="button" className="tag am-go" onClick={() => start('daily')}>Fly {dayLabel}</button>
             ) : null}
-            {ownReady && !!free?.letters.length && <button type="button" className="tag outline" onClick={() => start('free')}>Free flight</button>}
-            {(ownReady || !!free?.letters.length) && !!daily?.letters.length && (
+            {(ownReady || beatable) && !!free?.letters.length && <button type="button" className="tag outline" onClick={() => start('free')}>Free flight</button>}
+            {beatable && ownReady && <button type="button" className="tag outline" onClick={() => start('mine')}>Your mail</button>}
+            {!beatable && (ownReady || !!free?.letters.length) && !!daily?.letters.length && (
               <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel} · board</button>
             )}
           </div>

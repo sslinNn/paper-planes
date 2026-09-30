@@ -98,7 +98,7 @@ function drawPlane(
   ctx.translate(x, y)
   ctx.rotate(heading + pose.crash * pose.crash * 14)
   // крен читается как сплющивание по размаху крыльев; пике вытягивает; подъём подбрасывает
-  const k = scale * (1 + 0.28 * pose.pop) * (1 - 0.85 * pose.crash)
+  const k = scale * AIRFRAMES[model].size * (1 + 0.28 * pose.pop) * (1 - 0.85 * pose.crash)
   ctx.scale(k * (1 + 0.14 * pose.squash), k * (1 - 0.42 * Math.abs(pose.bank)) * (1 - 0.18 * pose.squash))
   if (style === 'shadow') {
     ctx.fillStyle = `rgb(29 29 27 / ${shadowAlpha.toFixed(3)})`
@@ -110,7 +110,7 @@ function drawPlane(
     ctx.strokeStyle = C.blue
     for (const p of a.wing) ctx.stroke(p)
   } else {
-    ctx.lineWidth = 0.6
+    ctx.lineWidth = 0.6 / AIRFRAMES[model].size // обводка одной толщины у всех моделей
     ctx.lineJoin = 'round'
     ctx.fillStyle = style === 'pilot' ? C.pink : C.paper
     ctx.strokeStyle = style === 'pilot' ? C.soot : C.blue

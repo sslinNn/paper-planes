@@ -68,7 +68,10 @@ export default function MePage() {
     return (
       <main className="sheet">
         <h1 className="title me-title" data-ink="Not boarded">Not boarded</h1>
-        <p className="lede"><Link className="tag" href="/">Back to the map and log in</Link></p>
+        <p className="lede not-found-actions">
+          <Link className="tag" href="/">Back to the map and log in</Link>
+          <Link className="tag outline" href="/play">Play Airmail <Arrow /></Link>
+        </p>
       </main>
     )
 

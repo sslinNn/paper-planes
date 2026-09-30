@@ -93,6 +93,7 @@ export default async function TrafficPage() {
       <p className="lede traffic-actions">
         <a className="tag" href={share} target="_blank" rel="noopener"><XMark /> Share the board</a>
         <Link className="tag" href="/">Watch them fly <Arrow /></Link>
+        <Link className="tag outline" href="/play">Fly them yourself: Airmail <Arrow /></Link>
       </p>
     </main>
   )

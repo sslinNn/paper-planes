@@ -653,3 +653,4 @@ html { scrollbar-color: var(--blue) var(--paper); }
   .am-stamp .visa { width: min(38vw, 170px); }
   .am-stamp .pts { font-size: 1.6rem; }
 }
+.not-found-actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }

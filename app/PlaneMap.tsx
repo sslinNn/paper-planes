@@ -545,7 +545,13 @@ function Arrivals({ planes }: { planes: PlaneRow[] }) {
 // модели самолётиков: у всех бумажный дротик, донатеры выбирают свою (все смотрят носом по +x)
 export function Airframe({ model }: { model: PlaneModel }) {
   const a = AIRFRAMES[model] ?? AIRFRAMES.dart
-  return <>{a.wing.map((d) => <path key={d} className="wing" d={d} />)}{a.fold.map((d) => <path key={`f${d}`} className="fold" d={d} />)}</>
+  return (
+    <g transform={a.size === 1 ? undefined : `scale(${a.size})`}>
+      {/* обводка той же толщины, что у дротика, несмотря на масштаб модели */}
+      {a.wing.map((d) => <path key={d} className="wing" d={d} style={a.size === 1 ? undefined : { strokeWidth: 0.5 / a.size }} />)}
+      {a.fold.map((d) => <path key={`f${d}`} className="fold" d={d} />)}
+    </g>
+  )
 }
 
 function arc(a: Point, b: Point) {

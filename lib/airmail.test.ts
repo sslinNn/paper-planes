@@ -152,6 +152,7 @@ test('diving trades altitude for speed', () => {
 
 test('score: longer legs and hotter letters pay more; quick chains multiply', () => {
   const g = newGame([L(1, 'DE', 'hot'), L(2, 'DE'), L(3, 'JP')], [], [10.4, 51.1])
+  g.mission = null // задание выбирается случайно и может добавить +300 за 🔥 — здесь считаем только доставки
   g.left = true
   select(g, 1)
   onTarget(g, g.letters[0])

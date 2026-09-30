@@ -237,7 +237,8 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
     g.heading += Math.max(-TURN * dt, Math.min(TURN * dt, d))
   } else g.heading += input.turn * TURN * dt
   // гроза болтает самолётик
-  if (g.inStorm) g.heading += (rand() - 0.5) * 5 * dt
+  // (своя случайность: сид дня управляет только тем, где и когда рождаются грозы и чужие самолётики)
+  if (g.inStorm) g.heading += (Math.random() - 0.5) * 5 * dt
 
   const dive = input.dive ? DIVE : { speed: 1, sink: 1 }
   const before = lonlat(g.x, g.y)

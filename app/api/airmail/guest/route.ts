@@ -1,6 +1,6 @@
-import { guestBag } from '@/lib/airmail-db'
+import { dailyBag } from '@/lib/airmail-db'
 
-// общий мешок гостей: публичные самолётики, CDN делит один ответ на всех
+// «Today's Mail»: один мешок на всех на день — CDN держит его долго, в БД ходим редко
 export async function GET() {
-  return Response.json(await guestBag(), { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' } })
+  return Response.json(await dailyBag(), { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } })
 }

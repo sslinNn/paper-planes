@@ -7,11 +7,17 @@ export const C = { paper: '#f5f3eb', blue: '#0078bf', pink: '#ff48b0', soot: '#1
 export type View = { vw: number; vh: number; dpr: number; z: number; cx: number; cy: number }
 export type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; rot: number }
 export type Floater = { x: number; y: number; text: string; color: string; life: number; max: number; big?: boolean }
+export type Ring = { x: number; y: number; life: number; max: number; color: string }
+export type Fx = { particles: Particle[]; floaters: Floater[]; rings: Ring[] }
+// тело самолётика: крен в повороте, сжатие в пике, подпрыгивание после подъёма, 0..1 падения
+export type Pose = { bank: number; squash: number; pop: number; crash: number }
+export type Ghost = { x: number; y: number; heading: number } | null
+export const STILL: Pose = { bank: 0, squash: 0, pop: 0, crash: 0 }
 
-let landPaths: Path2D[] | null = null
+let landPaths: { p: Path2D; b: [[number, number], [number, number]] }[] | null = null
 let plane: { wing: Path2D[]; fold: Path2D[] } | null = null
 let dots: CanvasPattern | null = null
-const buildLand = () => (landPaths ??= land.map((f) => new Path2D(path(f) ?? '')))
+const buildLand = () => (landPaths ??= land.map((f) => ({ p: new Path2D(path(f) ?? ''), b: path.bounds(f) })))
 const airframe = () => (plane ??= { wing: AIRFRAMES.dart.wing.map((d) => new Path2D(d)), fold: AIRFRAMES.dart.fold.map((d) => new Path2D(d)) })
 
 // riso-растр суши, как на главной карте: синяя точка в клетке
@@ -47,11 +53,13 @@ export const toScreen = (v: View, x: number, y: number, k = 1): [number, number]
   return [v.vw / 2 + dx * v.z * k, v.vh / 2 + (y - v.cy) * v.z * k]
 }
 
-function drawLand(ctx: CanvasRenderingContext2D, z: number) {
+// box — видимая часть мира [x0, y0, x1, y1]: страны вне экрана не рисуем, на телефоне это половина кадра
+function drawLand(ctx: CanvasRenderingContext2D, z: number, box?: [number, number, number, number]) {
   const pat = halftone(ctx)
   ctx.strokeStyle = 'rgb(0 120 191 / .7)'
   ctx.lineWidth = 1 / z
-  for (const p of buildLand()) {
+  for (const { p, b } of buildLand()) {
+    if (box && (b[1][0] < box[0] || b[0][0] > box[2] || b[1][1] < box[1] || b[0][1] > box[3])) continue
     ctx.fillStyle = 'rgb(0 120 191 / .08)'
     ctx.fill(p)
     ctx.fillStyle = pat
@@ -75,15 +83,26 @@ function drawTrail(ctx: CanvasRenderingContext2D, pts: [number, number][], z: nu
   ctx.setLineDash([])
 }
 
-function drawPlane(ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, scale: number, style: 'shadow' | 'pilot' | 'stray') {
+function drawPlane(
+  ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, scale: number,
+  style: 'shadow' | 'pilot' | 'stray' | 'ghost', pose: Pose = STILL, shadowAlpha = 0.2,
+) {
   const a = airframe()
   ctx.save()
   ctx.translate(x, y)
-  ctx.rotate(heading)
-  ctx.scale(scale, scale)
+  ctx.rotate(heading + pose.crash * pose.crash * 14)
+  // крен читается как сплющивание по размаху крыльев; пике вытягивает; подъём подбрасывает
+  const k = scale * (1 + 0.28 * pose.pop) * (1 - 0.85 * pose.crash)
+  ctx.scale(k * (1 + 0.14 * pose.squash), k * (1 - 0.42 * Math.abs(pose.bank)) * (1 - 0.18 * pose.squash))
   if (style === 'shadow') {
-    ctx.fillStyle = 'rgb(29 29 27 / .2)'
+    ctx.fillStyle = `rgb(29 29 27 / ${shadowAlpha.toFixed(3)})`
     for (const p of a.wing) ctx.fill(p)
+  } else if (style === 'ghost') {
+    ctx.globalAlpha = 0.45
+    ctx.setLineDash([2, 2])
+    ctx.lineWidth = 1
+    ctx.strokeStyle = C.blue
+    for (const p of a.wing) ctx.stroke(p)
   } else {
     ctx.lineWidth = 0.6
     ctx.lineJoin = 'round'
@@ -93,9 +112,60 @@ function drawPlane(ctx: CanvasRenderingContext2D, x: number, y: number, heading:
       ctx.fill(p)
       ctx.stroke(p)
     }
-    ctx.fillStyle = 'rgb(0 120 191 / .55)'
+    // нижнее крыло темнее на стороне крена — самолётик «ложится» на бок
+    ctx.fillStyle = `rgb(0 120 191 / ${(0.55 + 0.3 * Math.abs(pose.bank)).toFixed(3)})`
     for (const p of a.fold) ctx.fill(p)
   }
+  ctx.restore()
+}
+
+// смятый бумажный шарик — то, что остаётся от самолётика
+function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.fillStyle = C.pink
+  ctx.strokeStyle = C.soot
+  ctx.lineWidth = 0.6
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2
+    const rr = r * (0.75 + 0.25 * Math.sin(i * 2.7))
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr)
+  }
+  ctx.closePath()
+  ctx.fill()
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(-r * 0.5, -r * 0.2)
+  ctx.lineTo(r * 0.1, r * 0.1)
+  ctx.lineTo(r * 0.4, -r * 0.4)
+  ctx.moveTo(-r * 0.2, r * 0.5)
+  ctx.lineTo(r * 0.2, r * 0.15)
+  ctx.stroke()
+  ctx.restore()
+}
+
+// чернильный штамп там, где письмо легло: карта запоминает маршрут
+function drawInk(ctx: CanvasRenderingContext2D, l: Letter, z: number) {
+  const [x, y] = targetPoint(l)
+  const iso = l.to_country ?? 'AQ'
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(((l.id * 37) % 30 - 15) * (Math.PI / 180))
+  ctx.strokeStyle = 'rgb(255 72 176 / .85)'
+  ctx.lineWidth = 1.4 / z
+  ctx.beginPath()
+  ctx.arc(0, 0, 7, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(0, 0, 5.6, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.fillStyle = 'rgb(255 72 176 / .9)'
+  ctx.font = `900 ${5}px "Big Shoulders", Archivo, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(iso, 0, 0.3)
   ctx.restore()
 }
 
@@ -214,7 +284,7 @@ function drawClouds(ctx: CanvasRenderingContext2D, v: View, t: number) {
 }
 
 export function drawWorld(
-  ctx: CanvasRenderingContext2D, v: View, g: Game, particles: Particle[], floaters: Floater[], shake: number, clouds = true,
+  ctx: CanvasRenderingContext2D, v: View, g: Game, fx: Fx, shake: number, pose: Pose = STILL, ghost: Ghost = null, clouds = true,
 ) {
   ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0)
   ctx.fillStyle = C.paper
@@ -222,19 +292,22 @@ export function drawWorld(
   const sx = shake ? (Math.random() - 0.5) * shake : 0
   const sy = shake ? (Math.random() - 0.5) * shake : 0
   const half = v.vw / 2 / v.z
+  const halfH = v.vh / 2 / v.z
   const scale = 0.42 + g.alt * 0.0025
-  for (const off of [-W, 0, W]) {
-    // копия мира рисуется, только если её край попал в экран
-    if (v.cx - off + half < 0 || v.cx - off - half > W) continue
+  const copies = [-W, 0, W].filter((off) => !(v.cx - off + half < 0 || v.cx - off - half > W))
+  const world = (off: number) =>
     ctx.setTransform(v.dpr * v.z, 0, 0, v.dpr * v.z, v.dpr * (v.vw / 2 - (v.cx - off) * v.z + sx), v.dpr * (v.vh / 2 - v.cy * v.z + sy))
-    drawLand(ctx, v.z)
+  for (const off of copies) {
+    world(off)
+    drawLand(ctx, v.z, [v.cx - off - half - 5, v.cy - halfH - 5, v.cx - off + half + 5, v.cy + halfH + 5])
+    for (const l of g.delivered) drawInk(ctx, l, v.z)
     for (const th of g.thermals) {
       if (th.left <= 0) continue
       ctx.fillStyle = `rgb(255 72 176 / ${0.07 + 0.14 * (th.left / THERMAL_CHARGE)})`
       ctx.beginPath()
       ctx.arc(th.x, th.y, th.r, 0, Math.PI * 2)
       ctx.fill()
-      // кольца поднимаются к центру — видно, что тут тянет вверх
+      // кольца стягиваются к центру — видно, что тут тянет вверх
       ctx.strokeStyle = 'rgb(255 72 176 / .6)'
       ctx.lineWidth = 1.2 / v.z
       for (const k of [0, 0.33, 0.66]) {
@@ -281,6 +354,17 @@ export function drawWorld(
     if (!off) drawWind(ctx, v, g.t)
     drawTrail(ctx, g.trail.concat([[g.x, g.y]]), v.z)
     drawLetters(ctx, g.letters, g.target, v.z, g.t)
+    // круг сброса лопается и расходится
+    for (const r of fx.rings) {
+      const p = 1 - r.life / r.max
+      ctx.globalAlpha = 1 - p
+      ctx.strokeStyle = r.color
+      ctx.lineWidth = (3 * (1 - p) + 0.5) / v.z
+      ctx.beginPath()
+      ctx.arc(r.x, r.y, DELIVER_R * (1 + 2.5 * (1 - (1 - p) ** 3)), 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
     for (const s of g.strays) {
       // хвост по настоящему маршруту
       const k = Math.floor(s.i)
@@ -294,9 +378,9 @@ export function drawWorld(
       ctx.stroke()
       ctx.setLineDash([])
       drawPlane(ctx, s.x, s.y, s.heading, 0.42, 'stray')
-      label(ctx, s.label, s.x, s.y - 9 / v.z * 2, v.z, C.blue, 9)
+      label(ctx, s.label, s.x, s.y - 18 / v.z, v.z, C.blue, 9)
     }
-    for (const p of particles) {
+    for (const p of fx.particles) {
       ctx.save()
       ctx.globalAlpha = Math.max(0, p.life / p.max)
       ctx.translate(p.x, p.y)
@@ -305,15 +389,19 @@ export function drawWorld(
       ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.7)
       ctx.restore()
     }
-    // тень: чем выше самолётик, тем дальше от него тень
-    drawPlane(ctx, g.x + g.alt * 0.14, g.y + g.alt * 0.2, g.heading, scale * 0.9, 'shadow')
+    if (ghost) {
+      drawPlane(ctx, ghost.x, ghost.y, ghost.heading, 0.5, 'ghost')
+      label(ctx, 'your best', ghost.x, ghost.y - 14 / v.z, v.z, C.blue, 9)
+    }
+    // тень: чем выше самолётик, тем дальше и бледнее; у земли темнеет — тревога без цифр
+    const alt = g.alt * (1 - pose.crash)
+    drawPlane(ctx, g.x + alt * 0.14, g.y + alt * 0.2, g.heading, scale * 0.9, 'shadow', pose, 0.16 + (1 - alt / 100) * 0.3)
   }
   if (clouds) drawClouds(ctx, v, g.t)
-  // самолётик над облаками; в пике — линии скорости
-  for (const off of [-W, 0, W]) {
-    if (v.cx - off + half < 0 || v.cx - off - half > W) continue
-    ctx.setTransform(v.dpr * v.z, 0, 0, v.dpr * v.z, v.dpr * (v.vw / 2 - (v.cx - off) * v.z + sx), v.dpr * (v.vh / 2 - v.cy * v.z + sy))
-    if (g.diving) {
+  // самолётик над облаками; в пике — линии скорости; при падении — штопор и бумажный шарик
+  for (const off of copies) {
+    world(off)
+    if (g.diving && !pose.crash) {
       ctx.strokeStyle = 'rgb(29 29 27 / .6)'
       ctx.lineWidth = 1.6 / v.z
       ctx.beginPath()
@@ -327,8 +415,9 @@ export function drawWorld(
       }
       ctx.stroke()
     }
-    drawPlane(ctx, g.x, g.y, g.heading, scale, 'pilot')
-    for (const f of floaters) {
+    if (pose.crash < 0.75) drawPlane(ctx, g.x, g.y, g.heading, scale, 'pilot', pose)
+    else drawBall(ctx, g.x, g.y, 3.2 * Math.min(1, (pose.crash - 0.75) * 8))
+    for (const f of fx.floaters) {
       const p = 1 - f.life / f.max
       ctx.globalAlpha = Math.min(1, (f.life / f.max) * 3)
       label(ctx, f.text, f.x, f.y - p * 18, v.z, f.color, f.big ? 20 : 13)
@@ -337,7 +426,7 @@ export function drawWorld(
   }
   // стрелка к цели за экраном
   const a = active(g)
-  if (!a) return
+  if (!a || pose.crash) return
   ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0)
   const [tx, ty] = toScreen(v, ...targetPoint(a))
   const m = 34
@@ -370,15 +459,6 @@ export function drawResult(ctx: CanvasRenderingContext2D, vw: number, vh: number
   ctx.setTransform(dpr * z, 0, 0, dpr * z, (dpr * (vw - W * z)) / 2, (dpr * (vh - H * z)) / 2)
   drawLand(ctx, z)
   drawTrail(ctx, g.trail.concat([[g.x, g.y]]), z, 3)
-  for (const l of g.delivered) {
-    const [x, y] = targetPoint(l)
-    ctx.fillStyle = C.pink
-    ctx.strokeStyle = C.soot
-    ctx.lineWidth = 1 / z
-    ctx.beginPath()
-    ctx.arc(x, y, 4 / z, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.stroke()
-  }
+  for (const l of g.delivered) drawInk(ctx, l, z)
   drawPlane(ctx, g.x, g.y, g.heading, 0.9 / z, 'pilot')
 }

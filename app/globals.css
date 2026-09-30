@@ -556,8 +556,9 @@ html { scrollbar-color: var(--blue) var(--paper); }
   background: var(--paper); border: 1.5px solid var(--soot); cursor: pointer; }
 
 /* штамп доставки: удар печати на весь экран и очки под ним */
-.am-stamp { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 4px; pointer-events: none; animation: am-stamp 1.3s var(--ease-out) forwards; }
-.am-stamp .visa { width: min(62vw, 340px); height: auto; }
+/* штамп садится над самолётиком (он в центре экрана), а не поверх него — полёт не закрыт */
+.am-stamp { position: absolute; left: 0; right: 0; top: 9vh; display: grid; justify-items: center; gap: 2px; pointer-events: none; animation: am-stamp 1.3s var(--ease-out) forwards; }
+.am-stamp .visa { width: min(46vw, 230px); height: auto; }
 .am-stamp .pts { margin: 0; font: 900 clamp(2rem, 3.2vw, 2.9rem)/1 var(--font-display); color: var(--pink); text-shadow: 2px 1px 0 var(--soot); }
 .am-stamp .pts span { color: var(--blue); }
 @keyframes am-stamp { 0% { scale: 2.4; opacity: 0; } 12% { scale: 1; opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; scale: .96; } }
@@ -584,3 +585,14 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .am-wind.tail { color: var(--blue); }
 .am-wind.head { color: var(--soot); background: var(--pink); }
 @media (min-width: 721px) { .am-wind { top: 88px; } }
+
+/* intro: одна строка и большая кнопка — правила учатся в полёте */
+.am-intro .am-go { font-size: 1.15rem; padding: .85em 1.3em .8em; }
+.am-login { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.am-login .tag { display: inline-flex; align-items: center; gap: .5em; }
+.am-login svg, .am-actions .tag svg { width: 1em; height: 1em; }
+.am-actions .tag { display: inline-flex; align-items: center; gap: .5em; }
+.am-wait { animation: am-wait 1.2s ease-in-out infinite alternate; }
+@keyframes am-wait { from { opacity: .55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .am-wait { animation: none; } }
+.am-challenge { margin: 0; padding: 8px 10px; background: var(--pink); font-weight: 700; rotate: -1deg; }

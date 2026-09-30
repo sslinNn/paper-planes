@@ -3,47 +3,45 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { at, projection, W } from '@/lib/geo'
 import { countryName } from '@/lib/country'
-import { EMOJI, LABEL, type Kind } from '@/lib/letters'
+import { EFFECT, EMOJI, LABEL, type Kind } from '@/lib/letters'
 import {
-  active, COMBO_WINDOW, countryAt, headwind, newGame, select, shareText, step, tallyLine, targetPoint,
+  active, COMBO_WINDOW, countryAt, headwind, newGame, select, shareText, step, tallyLine, targetPoint, TURN,
   type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
 } from '@/lib/airmail'
+import { dailyShare, rng, routeCode, type Route } from '@/lib/postcard'
+import { authClient } from '@/lib/auth-client'
 import { track } from '@/lib/track'
 import { PassportStamp, RubberFilter } from '../me/Passport'
-import { C, drawResult, drawWorld, toScreen, zoomFor, type Floater, type Particle, type View } from './draw'
+import { XMark } from '../icons'
+import { C, drawResult, drawWorld, STILL, toScreen, zoomFor, type Fx, type Ghost, type Pose, type View } from './draw'
 import { beep, chirp, crumple, isMuted, rustle, setMuted, setWind, silence, thud, unlock } from './sound'
 
 export type Bag = {
   guest: boolean; handle: string | null; home: [number, number] | null; homeCountry?: string | null
   letters: Letter[]; weather: CountryWeather[]; sky?: Sky[]; bag: Record<Kind, number>
-  fallback?: boolean // залогинен, но своих писем ещё нет — летит по общему небу
+  daily?: number // «Today's Mail #N» — один мешок на всех на день
+  collecting?: boolean // вошёл, а реплаи ещё не собраны
 }
+type Mode = 'mine' | 'daily'
 type Phase = 'loading' | 'intro' | 'flying' | 'over'
 type Stamped = { key: number; country: string; points: number; combo: number }
-
-async function loadBag(): Promise<Bag> {
-  const r = await fetch('/api/airmail')
-  if (r.ok) {
-    const b = (await r.json()) as Bag
-    if (b.letters.length) return b
-  }
-  const g = (await (await fetch('/api/airmail/guest')).json()) as Bag
-  return r.ok ? { ...g, fallback: true } : g
-}
 
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const coarse = () => typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
 const place = (iso: string | null) => (iso && iso !== 'AQ' ? countryName(iso) : 'Antarctica')
 const fmt = (n: number) => Math.round(n).toLocaleString('en')
 const LOW = 25
+const CRASH_MS = 1300
+const TRAIL_EVERY = 0.25 // как в lib/airmail: точка следа раз в четверть секунды — по ней летит призрак
 
 // подсказки первых полётов: учим по ходу, а не стеной правил
 const HINTS: [number, number, (touch: boolean) => string][] = [
-  [0.5, 4.5, (t) => (t ? 'Touch where you want to fly' : 'Point where you want to fly')],
-  [5, 10, (t) => (t ? 'Hold DIVE: faster, but you sink' : 'Hold SPACE or the mouse button to dive: faster, but you sink')],
-  [11, 16, () => 'Grey streaks are the wind: ride tailwinds, dodge headwinds'],
-  [17, 22, () => 'Fly through blue planes to catch strangers’ letters'],
-  [23, 28, () => 'Pink rings lift you · storms push you down'],
+  [0.3, 4, (t) => (t ? 'Touch where you want to fly' : 'Point where you want to fly')],
+  [4.3, 8.5, () => 'Fly into the pink circle to deliver the letter'],
+  [9, 13, (t) => (t ? 'Hold DIVE: faster, but you sink' : 'Hold SPACE or the mouse button to dive: faster, but you sink')],
+  [13.5, 18, () => 'Grey streaks are the wind: ride tailwinds, dodge headwinds'],
+  [18.5, 23, () => 'Fly through blue planes to catch strangers’ letters'],
+  [23.5, 28, () => 'Pink rings lift you · storms push you down'],
 ]
 
 // камера с упреждением по курсу; на шве карты прыгает вместе с самолётиком
@@ -78,73 +76,116 @@ function writeNum(key: string, n: number) {
     localStorage.setItem(key, String(n))
   } catch {}
 }
-
-// ветер вдоль курса: попутный подгоняет, встречный тормозит — стрелка и процент от своей скорости
-function WindChip({ w }: { w: number }) {
-  if (Math.abs(w) < 0.08) return null
-  const tail = w > 0
-  return (
-    <p className={`am-wind ${tail ? 'tail' : 'head'}`}>
-      <svg viewBox="0 0 20 12" aria-hidden="true" style={{ rotate: tail ? '0deg' : '180deg' }}>
-        <path d="M1 6 H15 M11 2 L16 6 L11 10" />
-      </svg>
-      {tail ? 'Tailwind' : 'Headwind'} {tail ? '+' : '−'}{Math.round(Math.abs(w) * 100)}%
-    </p>
-  )
+function readGhost(day: number): [number, number][] | null {
+  try {
+    return JSON.parse(localStorage.getItem(`airmail-ghost-${day}`) ?? 'null')
+  } catch {
+    return null
+  }
+}
+// призрак на маршруте: точка следа по времени полёта, курс — по соседней точке
+function ghostAt(trail: [number, number][] | null, t: number): Ghost {
+  if (!trail || trail.length < 2 || t / TRAIL_EVERY > trail.length - 1) return null
+  const i = Math.min(trail.length - 2, Math.floor(t / TRAIL_EVERY))
+  const f = t / TRAIL_EVERY - i
+  const [x0, y0] = trail[i]
+  const [x1, y1] = trail[i + 1]
+  const dx = Math.abs(x1 - x0) > W / 2 ? 0 : x1 - x0
+  return { x: x0 + dx * f, y: y0 + (y1 - y0) * f, heading: Math.atan2(y1 - y0, dx || 1e-6) }
 }
 
-export default function Airmail() {
+const logIn = () => {
+  track('login_clicked', { from: 'airmail' })
+  authClient.signIn.social({ provider: 'twitter', callbackURL: '/play' })
+}
+
+export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const game = useRef<Game | null>(null)
   const input = useRef({ aim: null as number | null, keys: new Set<string>(), mouse: false, button: false })
   const view = useRef<View>({ vw: 1, vh: 1, dpr: 1, z: 1, cx: 0, cy: 0 })
-  const particles = useRef<Particle[]>([])
-  const floaters = useRef<Floater[]>([])
+  const fx = useRef<Fx>({ particles: [], floaters: [], rings: [] })
+  const pose = useRef<Pose>({ ...STILL })
+  const freeze = useRef(0)
   const shake = useRef(0)
+  const seeded = useRef<() => number>(Math.random)
   const onEvents = useRef<(ev: GameEvent[], g: Game) => void>(() => {})
   const [phase, setPhase] = useState<Phase>('loading')
-  const [bag, setBag] = useState<Bag | null>(null)
+  const [mine, setMine] = useState<Bag | null>(null)
+  const [daily, setDaily] = useState<Bag | null>(null)
+  const [authed, setAuthed] = useState(false)
+  const [mode, setMode] = useState<Mode>('daily')
   const [hud, setHud] = useState({ alt: 100, letters: [] as Letter[], target: null as number | null, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: 0 })
   const [stampOn, setStampOn] = useState<Stamped | null>(null)
   const [result, setResult] = useState<Game | null>(null)
   // localStorage читается лениво: на сервере фаза loading, эти значения в разметку ещё не попадают
   const [best, setBest] = useState(() => (typeof window === 'undefined' ? 0 : readNum('airmail-best-score')))
+  const [dayBest, setDayBest] = useState(0)
   const [mute, setMute] = useState(() => (typeof window === 'undefined' ? false : isMuted()))
   const [touch] = useState(() => (typeof window === 'undefined' ? false : coarse()))
+  const bag = mode === 'mine' ? mine : daily
 
+  // мешок дня для всех; личный — если вошёл. Вошёл прямо из игры — ждём, пока соберутся реплаи
   useEffect(() => {
-    loadBag()
-      .then((b) => (setBag(b), setPhase('intro')))
-      .catch(() => setPhase('intro'))
+    let stop = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const loadMine = async (tries: number) => {
+      const r = await fetch('/api/airmail')
+      if (stop || !r.ok) return
+      setAuthed(true)
+      const b = (await r.json()) as Bag
+      setMine(b)
+      if (b.letters.length) setMode('mine')
+      else if (b.collecting && tries < 15) timer = setTimeout(() => loadMine(tries + 1).catch(() => {}), 3000)
+    }
+    const loadDaily = async () => {
+      const b = (await (await fetch('/api/airmail/guest')).json()) as Bag
+      if (stop) return
+      setDaily(b)
+      if (b.daily) setDayBest(readNum(`airmail-daily-${b.daily}`))
+    }
+    // intro открывается, как только пришёл мешок дня; личный подтянется следом и сменит кнопку
+    const ready = () => !stop && setPhase((p) => (p === 'loading' ? 'intro' : p))
+    loadDaily().then(ready, ready)
+    loadMine(0).catch(() => {})
+    return () => {
+      stop = true
+      clearTimeout(timer)
+    }
   }, [])
 
-  const home = useCallback((b: Bag) => (b.fallback ? null : (b.home ?? (b.homeCountry ? at(b.homeCountry) : null))), [])
+  const home = useCallback((b: Bag) => (b.daily ? null : (b.home ?? (b.homeCountry ? at(b.homeCountry) : null))), [])
 
-  const start = useCallback(() => {
-    if (!bag?.letters.length) return
+  const start = useCallback((m: Mode) => {
+    const b = m === 'mine' ? mine : daily
+    if (!b?.letters.length) return
     unlock()
-    const g = newGame(bag.letters, bag.weather, home(bag), bag.sky ?? [])
+    setMode(m)
+    const g = newGame(b.letters, b.weather, home(b), b.sky ?? [])
+    // сид дня: у всех одни и те же грозы и чужие самолётики
+    seeded.current = b.daily ? rng(b.daily * 104729) : Math.random
     game.current = g
-    particles.current = []
-    floaters.current = []
+    fx.current = { particles: [], floaters: [], rings: [] }
+    pose.current = { ...STILL }
     input.current.aim = null
     view.current = { ...view.current, cx: g.x, cy: g.y }
     setHud({ alt: 100, letters: g.letters, target: g.target, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: headwind(g) })
     setResult(null)
     setPhase('flying')
-    track('airmail_start', { guest: bag.guest, letters: bag.letters.length })
-  }, [bag, home])
+    track('airmail_start', { mode: m, letters: b.letters.length, day: b.daily })
+  }, [mine, daily, home])
 
-  // события игры: штамп, очки, звук, вибрация, обрывки бумаги, штамп в паспорт
+  // события игры: вес штампа, очки, звук, вибрация, обрывки бумаги, штамп в паспорт
   useEffect(() => {
     onEvents.current = (ev, g) => {
       const calm = reduced()
+      const f = fx.current
       const burst = (color: string[], n: number) => {
         if (calm) return
         for (let i = 0; i < n; i++) {
           const a = Math.random() * Math.PI * 2
           const sp = 20 + Math.random() * 45
-          particles.current.push({
+          f.particles.push({
             x: g.x, y: g.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 15, life: 1.2, max: 1.2,
             color: color[i % color.length], size: 1.6 + Math.random() * 1.8, rot: Math.random() * 6,
           })
@@ -153,36 +194,43 @@ export default function Airmail() {
       for (const e of ev) {
         if (e.type === 'delivered') {
           const country = e.letter.to_country ?? 'AQ'
+          const [tx, ty] = targetPoint(e.letter)
           setStampOn({ key: g.t, country, points: e.points, combo: e.combo })
           thud(e.combo)
           navigator.vibrate?.(e.combo > 1 ? [30, 40, 30] : 35)
+          // «сон» Ниймана: мир замирает на мгновение — удар чувствуется; в серии дольше
+          if (!calm) freeze.current = performance.now() + Math.min(180, 80 + e.combo * 20)
           shake.current = 10 + e.combo * 2
+          pose.current.pop = 1
+          f.rings.push({ x: tx, y: ty, life: 0.6, max: 0.6, color: C.pink }, { x: tx, y: ty, life: 0.9, max: 0.9, color: C.blue })
           burst([C.pink, C.blue, C.soot], 26 + e.combo * 8)
-          if (bag && !bag.guest && !bag.fallback)
+          if (mode === 'mine' && bag && !bag.guest)
             fetch('/api/airmail/stamp', { method: 'POST', body: JSON.stringify({ planeId: e.letter.id }) }).catch(() => {})
-          track('airmail_delivered', { kind: e.letter.kind ?? 'plain', country, combo: e.combo })
+          track('airmail_delivered', { kind: e.letter.kind ?? 'plain', country, combo: e.combo, mode })
         }
         if (e.type === 'caught') {
           chirp()
           navigator.vibrate?.(15)
+          pose.current.pop = 0.7
           burst([C.blue, C.paper], 12)
-          floaters.current.push({ x: g.x, y: g.y - 8, text: `+${e.points} caught ${e.stray.label}`, color: C.blue, life: 1.6, max: 1.6 })
+          f.floaters.push({ x: g.x, y: g.y - 8, text: `+${e.points} caught ${e.stray.label}`, color: C.blue, life: 1.6, max: 1.6 })
         }
         if (e.type === 'storm') {
           navigator.vibrate?.([10, 40, 10])
           rustle()
-          if (e.storm.hot) floaters.current.push({ x: g.x, y: g.y - 8, text: 'Into the argument!', color: C.soot, life: 1.4, max: 1.4 })
+          if (e.storm.hot) f.floaters.push({ x: g.x, y: g.y - 8, text: 'Into the argument!', color: C.soot, life: 1.4, max: 1.4 })
         }
         if (e.type === 'crashed') crumple()
+        if (e.type === 'emptied') burst([C.pink, C.blue, C.soot, C.paper], 80)
         if (e.type === 'crashed' || e.type === 'emptied')
-          track('airmail_over', { delivered: g.delivered.length, score: Math.round(g.score), caught: g.caught, won: g.won, guest: bag?.guest })
+          track('airmail_over', { delivered: g.delivered.length, score: Math.round(g.score), caught: g.caught, won: g.won, mode })
       }
       // горящее письмо дымит
       if (active(g)?.kind === 'hot' && !calm && Math.random() < 0.5)
-        particles.current.push({ x: g.x, y: g.y, vx: (Math.random() - 0.5) * 6, vy: -4, life: 0.9, max: 0.9, color: 'rgb(29 29 27 / .45)', size: 1.4, rot: 0 })
+        f.particles.push({ x: g.x, y: g.y, vx: (Math.random() - 0.5) * 6, vy: -4, life: 0.9, max: 0.9, color: 'rgb(29 29 27 / .45)', size: 1.4, rot: 0 })
       setWind(Math.min(1, (100 - g.alt) / 100 + (g.inStorm ? 0.5 : 0) + (g.diving ? 0.4 : 0)))
     }
-  }, [bag])
+  }, [bag, mode])
 
   // canvas под экран и плотность пикселей
   useEffect(() => {
@@ -201,14 +249,16 @@ export default function Airmail() {
 
   // attract mode: пока висит intro, самолётик сам развозит письма за карточкой — сцена живая с первого кадра
   useEffect(() => {
-    if (phase !== 'intro' || !bag?.letters.length) return
+    const b = (mine?.letters.length ? mine : null) ?? daily
+    if (phase !== 'intro' || !b?.letters.length) return
     const ctx = canvas.current!.getContext('2d')!
     const calm = reduced()
-    const fresh = () => newGame(bag.letters, bag.weather, home(bag), bag.sky ?? [])
+    const fresh = () => newGame(b.letters, b.weather, home(b), b.sky ?? [])
     let g = fresh()
     view.current = { ...view.current, cx: g.x, cy: g.y }
     let raf = 0
     let last = performance.now()
+    const none: Fx = { particles: [], floaters: [], rings: [] }
     const frame = (now: number) => {
       const dt = (now - last) / 1000
       last = now
@@ -218,7 +268,7 @@ export default function Airmail() {
       follow(view.current, g, dt, calm)
       // карточка по центру (на телефоне — внизу): самолётик летает сбоку от неё, а не под ней
       const v = view.current
-      drawWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : { ...v, cx: v.cx - (v.vw * 0.33) / v.z }, g, [], [], 0)
+      drawWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : { ...v, cx: v.cx - (v.vw * 0.33) / v.z }, g, none, 0)
       if (!calm) raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
@@ -228,52 +278,99 @@ export default function Airmail() {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', vis)
     }
-  }, [phase, bag, home])
+  }, [phase, mine, daily, home])
 
   // игровой цикл
   useEffect(() => {
-    if (phase !== 'flying') return
+    if (phase !== 'flying' || !bag) return
     const ctx = canvas.current!.getContext('2d')!
     const calm = reduced()
     const tutorial = readNum('airmail-runs') < 2
+    const ghostTrail = bag.daily ? readGhost(bag.daily) : null
     let raf = 0
     let last = performance.now()
     let hudAt = 0
     let overAt = 0
     let beepAt = 0
+    let endAt = 0
     let lastOver: string | null = null
+    let lastTarget: number | null = null
+    const finish = (g: Game) => {
+      silence()
+      writeNum('airmail-runs', readNum('airmail-runs') + 1)
+      const score = Math.round(g.score)
+      if (score > readNum('airmail-best-score')) {
+        writeNum('airmail-best-score', score)
+        setBest(score)
+      }
+      if (bag.daily && score > readNum(`airmail-daily-${bag.daily}`)) {
+        writeNum(`airmail-daily-${bag.daily}`, score)
+        setDayBest(score)
+        try {
+          localStorage.setItem(`airmail-ghost-${bag.daily}`, JSON.stringify(g.trail.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10])))
+        } catch {}
+      }
+      const v = view.current
+      drawResult(ctx, v.vw, v.vh, v.dpr, g)
+      setResult({ ...g })
+      setPhase('over')
+    }
     const frame = (now: number) => {
       const g = game.current!
-      const dt = (now - last) / 1000
+      const dt = Math.min(0.1, (now - last) / 1000)
       last = now
       const inp = input.current
       const keys = inp.keys
       const turn = (keys.has('ArrowRight') || keys.has('d') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('a') ? 1 : 0)
       if (turn) inp.aim = null
       const dive = keys.has(' ') || keys.has('Shift') || keys.has('ArrowUp') || keys.has('w') || inp.mouse || inp.button
-      onEvents.current(step(g, { aim: inp.aim, turn, dive }, dt), g)
+      const p = pose.current
+      const frozen = now < freeze.current
+
+      if (!g.done && !frozen) {
+        const before = g.heading
+        onEvents.current(step(g, { aim: inp.aim, turn, dive }, dt, seeded.current), g)
+        // крен — от скорости поворота; сжатие — к пике
+        const rate = dt ? Math.atan2(Math.sin(g.heading - before), Math.cos(g.heading - before)) / dt / TURN : 0
+        p.bank += (Math.max(-1, Math.min(1, rate)) - p.bank) * Math.min(1, dt * 10)
+        p.squash += ((g.diving ? 1 : 0) - p.squash) * Math.min(1, dt * 8)
+        // взял письмо с характером — сказать, что оно делает с полётом
+        if (g.target !== lastTarget) {
+          lastTarget = g.target
+          const l = active(g)
+          if (l?.kind && l.kind !== 'plain')
+            fx.current.floaters.push({ x: g.x, y: g.y - 10, text: `${EMOJI[l.kind]} ${LABEL[l.kind]}: ${EFFECT[l.kind]}`, color: C.pink, life: 2.2, max: 2.2 })
+        }
+      }
+      p.pop = Math.max(0, p.pop - dt * 3)
+      if (g.done && !endAt) endAt = now
+      if (g.done && !g.won) p.crash = calm ? 1 : Math.min(1, (now - endAt) / CRASH_MS)
 
       const v = view.current
-      follow(v, g, dt, calm)
-      const k = Math.min(dt, 0.05)
-      for (const p of particles.current) {
-        p.x += p.vx * k
-        p.y += p.vy * k
-        p.vy += 20 * k
-        p.rot += k * 4
-        p.life -= k
+      if (!frozen) follow(v, g, dt, calm)
+      const k = frozen ? 0 : Math.min(dt, 0.05)
+      const f = fx.current
+      for (const q of f.particles) {
+        q.x += q.vx * k
+        q.y += q.vy * k
+        q.vy += 20 * k
+        q.rot += k * 4
+        q.life -= k
       }
-      particles.current = particles.current.filter((p) => p.life > 0)
-      for (const f of floaters.current) f.life -= k
-      floaters.current = floaters.current.filter((f) => f.life > 0)
+      f.particles = f.particles.filter((q) => q.life > 0)
+      for (const q of f.floaters) q.life -= k
+      f.floaters = f.floaters.filter((q) => q.life > 0)
+      for (const q of f.rings) q.life -= k
+      f.rings = f.rings.filter((q) => q.life > 0)
       shake.current = calm ? 0 : Math.max(0, shake.current - k * 30)
-      drawWorld(ctx, v, g, particles.current, floaters.current, calm ? 0 : Math.max(shake.current, g.inStorm ? 5 : 0))
+      const ghost = g.done ? null : ghostAt(ghostTrail, g.t)
+      drawWorld(ctx, v, g, f, calm ? 0 : Math.max(shake.current, g.inStorm ? 5 : 0), p, ghost)
 
-      if (g.alt < LOW && now - beepAt > 180 + g.alt * 25) {
+      if (!g.done && g.alt < LOW && now - beepAt > 180 + g.alt * 25) {
         beepAt = now
         beep()
       }
-      if (now - overAt > 250) {
+      if (now - overAt > 250 && !g.done) {
         overAt = now
         const iso = countryAt(projection.invert!([g.x, g.y]) as [number, number])
         if (iso && iso !== lastOver) setHud((h) => ({ ...h, over: countryName(iso) }))
@@ -281,22 +378,12 @@ export default function Airmail() {
       }
       if (now - hudAt > 100) {
         hudAt = now
-        const hint = tutorial ? (HINTS.find(([a, b]) => g.t >= a && g.t < b)?.[2](touch) ?? '') : ''
+        const hint = tutorial && !g.done ? (HINTS.find(([a, b]) => g.t >= a && g.t < b)?.[2](touch) ?? '') : ''
         const comboLeft = g.combo ? Math.max(0, 1 - (g.t - g.lastDelivery) / COMBO_WINDOW) : 0
         setHud((h) => ({ ...h, alt: g.alt, letters: g.letters, target: g.target, score: g.score, combo: g.combo, comboLeft, hint, wind: headwind(g) }))
       }
-      if (g.done) {
-        silence()
-        writeNum('airmail-runs', readNum('airmail-runs') + 1)
-        if (g.score > readNum('airmail-best-score')) {
-          writeNum('airmail-best-score', Math.round(g.score))
-          setBest(Math.round(g.score))
-        }
-        drawResult(ctx, v.vw, v.vh, v.dpr, g)
-        setResult({ ...g })
-        setPhase('over')
-        return
-      }
+      // конец: самолётик штопором уходит вниз и сминается (или салют за пустой мешок) — и только потом итоги
+      if (g.done && now - endAt > (calm ? 0 : g.won ? 900 : CRASH_MS + 400)) return finish(g)
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
@@ -307,7 +394,7 @@ export default function Airmail() {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', vis)
     }
-  }, [phase, touch])
+  }, [phase, touch, bag])
 
   const pick = useCallback((id: number) => {
     if (!game.current) return
@@ -323,7 +410,7 @@ export default function Airmail() {
       if ((k === ' ' || k === 'Enter') && (phase === 'intro' || phase === 'over')) {
         if ((e.target as HTMLElement).closest?.('a, button')) return
         e.preventDefault()
-        start()
+        start(phase === 'over' ? mode : mine?.letters.length ? 'mine' : 'daily')
         return
       }
       if (phase !== 'flying') return
@@ -345,7 +432,7 @@ export default function Airmail() {
       removeEventListener('keyup', up)
       removeEventListener('blur', blur)
     }
-  }, [phase, start, pick])
+  }, [phase, start, pick, mode, mine])
 
   // палец/курсор задаёт курс относительно самолётика на экране; зажатая кнопка мыши — пике
   const aimAt = (e: React.PointerEvent) => {
@@ -366,6 +453,8 @@ export default function Airmail() {
   }
 
   const low = phase === 'flying' && hud.alt < LOW
+  const dayLabel = daily?.daily ? `Today’s Mail #${daily.daily}` : 'Today’s Mail'
+  const ownReady = !!mine?.letters.length
 
   return (
     <div className={`airmail-stage${low ? ' low' : ''}`}>
@@ -385,7 +474,7 @@ export default function Airmail() {
           <div className="am-alt" role="meter" aria-label="Altitude" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hud.alt)}>
             <span style={{ transform: `scaleY(${hud.alt / 100})` }} />
           </div>
-          {low && <p className="am-low" role="alert">Pull up! Find a pink thermal or deliver</p>}
+          {low && hud.alt > 0 && <p className="am-low" role="alert">Pull up! Find a pink thermal or deliver</p>}
           <p className="am-over" aria-live="polite">{hud.over && <span key={hud.over}>Now over <strong>{hud.over}</strong></span>}</p>
           {hud.hint && <p className="am-hint" key={hud.hint}>{hud.hint}</p>}
           {touch && (
@@ -425,34 +514,49 @@ export default function Airmail() {
       {phase === 'loading' && <div className="am-card"><p className="status">Sorting the mailbag…</p></div>}
 
       {phase === 'intro' && (
-        <div className="am-card">
+        <div className="am-card am-intro">
           <h1 className="title" data-ink="Airmail">Airmail</h1>
-          <p className="lede">Every reply you’ve sent on X is a letter. <strong>Fly it there</strong> before your paper plane hits the ground.</p>
-          <ul className="am-rules">
-            <li><strong>Steer</strong> with your finger, mouse or ← →. <strong>Hold {touch ? 'DIVE' : 'SPACE'}</strong> to trade height for speed.</li>
-            <li>A letter lands when you fly into the <span className="pink">pink circle</span> around its recipient. Deliver fast to chain <strong>express combos</strong>.</li>
-            <li>Grey streaks are the <strong>wind</strong>: trade winds blow west, westerlies blow east. Headwinds slow you down.</li>
-            <li><span className="pink">Pink thermals</span> lift you where people are kind. Storms gather where X argues.</li>
-            <li>Jev read every reply: 💌 glides long · 🔥 flies fast and burns · 😂 rides the wind · ❓ lifts double.</li>
-          </ul>
-          {bag?.guest && !bag.fallback && <p className="fine">You’re flying strangers’ letters. <Link href="/">Log in with X</Link> to fly yours.</p>}
-          {bag?.fallback && <p className="fine">Your replies are still taking off. Meanwhile, fly strangers’ letters from the public sky.</p>}
-          {bag && !bag.letters.length && <p className="fine">No letters in the sky yet. Come back when the planes are flying.</p>}
-          {!bag && <p className="fine">Couldn’t reach the mailbag. Refresh to try again.</p>}
+          <p className="lede">Every reply you’ve sent on X is a letter. <strong>Fly it there.</strong></p>
+          {challenge && (
+            <p className="am-challenge">
+              Someone scored <strong>{fmt(challenge.score)}</strong>{challenge.day ? <> on Today’s Mail #{challenge.day}</> : null}, delivering {challenge.countries.length} {challenge.countries.length === 1 ? 'letter' : 'letters'}. Beat it.
+            </p>
+          )}
           <div className="am-actions">
-            <button type="button" className="tag" onClick={start} disabled={!bag?.letters.length}>Fold &amp; fly</button>
-            {!!best && <span className="fine">Best: {fmt(best)}</span>}
+            {ownReady ? (
+              <>
+                <button type="button" className="tag am-go" onClick={() => start('mine')}>Fly your mail</button>
+                {!!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel}</button>}
+              </>
+            ) : (
+              <button type="button" className="tag am-go" onClick={() => start('daily')} disabled={!daily?.letters.length}>Fly {dayLabel}</button>
+            )}
           </div>
-          <p className="fine am-by">A game by <Link href="/">Paper Planes</Link>, the live map of replies on X.</p>
+          {!authed && (
+            <p className="am-login">
+              <button type="button" className="tag ghost" onClick={logIn}><XMark /> Log in to fly your own replies</button>
+              <span className="fine">Read-only. We never post.</span>
+            </p>
+          )}
+          {authed && !ownReady && mine?.collecting && <p className="fine am-wait">Reading your replies on X… your mailbag lands in a few seconds.</p>}
+          {authed && !ownReady && !mine?.collecting && <p className="fine">No replies of yours in the sky yet. Reply to someone on X, then come back. Meanwhile, fly today’s mail.</p>}
+          {daily && !daily.letters.length && !ownReady && <p className="fine">No letters in the sky yet. Come back when the planes are flying.</p>}
+          {!!dayBest && <p className="fine">Your best today: {fmt(dayBest)} · your ghost flies with you</p>}
+          <p className="fine am-by">A game by <Link href="/">Paper Planes</Link>, the live map of replies on X. Today’s mail is the same sky for everyone.</p>
         </div>
       )}
 
       {phase === 'over' && result && bag && (() => {
         const g = result
-        const countries = [...new Set(g.delivered.map((l) => l.to_country ?? 'AQ'))]
-        const guest = bag.guest || !!bag.fallback
-        const text = shareText({ delivered: g.delivered, km: g.km, score: g.score, won: g.won, guest, me: bag.handle, bag: bag.bag })
-        const url = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(`${location.origin}/play`)}`
+        const countries = g.delivered.map((l) => l.to_country ?? 'AQ')
+        const unique = [...new Set(countries)]
+        const hot = g.delivered.filter((l) => l.kind === 'hot').length
+        const code = routeCode({ score: g.score, km: g.km, countries, day: bag.daily ?? null })
+        const link = `${location.origin}/play/r/${code}`
+        const text = bag.daily
+          ? `${dailyShare({ day: bag.daily, countries, score: g.score, hot, won: g.won })}\nFly the same sky today:`
+          : shareText({ delivered: g.delivered, km: g.km, score: g.score, won: g.won, guest: false, me: bag.handle, bag: bag.bag })
+        const url = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`
         const line = tallyLine(bag.bag)
         const record = Math.round(g.score) >= best && g.score > 0
         return (
@@ -460,28 +564,50 @@ export default function Airmail() {
             <h1 className="title" data-ink={g.won ? 'Bag empty' : 'Landed'}>{g.won ? 'Bag empty' : 'Landed'}</h1>
             <p className="am-final"><span className="n">{fmt(g.score)}</span>{record && <span className="rec">New best</span>}</p>
             <p className="lede">
+              {bag.daily ? <>{dayLabel} · </> : null}
               <strong>{g.delivered.length}</strong> {g.delivered.length === 1 ? 'letter' : 'letters'} ·{' '}
-              <strong>{countries.length}</strong> {countries.length === 1 ? 'country' : 'countries'} ·{' '}
+              <strong>{unique.length}</strong> {unique.length === 1 ? 'country' : 'countries'} ·{' '}
               <strong>{fmt(g.km)}</strong> km{g.caught ? <> · <strong>{g.caught}</strong> caught</> : null}
             </p>
-            {line && <p className="am-jev">Jev read {guest ? 'this' : 'your'} mailbag: {line}</p>}
-            {!!countries.length && (
+            {line && <p className="am-jev">Jev read {bag.daily ? 'this' : 'your'} mailbag: {line}</p>}
+            {!!unique.length && (
               <ul className="am-stamps">
-                {countries.slice(0, 6).map((c) => (
-                  <li key={c}><PassportStamp stamp={{ country: c, count: g.delivered.filter((l) => (l.to_country ?? 'AQ') === c).length, first: new Date().toISOString() }} airmail /></li>
+                {unique.slice(0, 6).map((c) => (
+                  <li key={c}><PassportStamp stamp={{ country: c, count: countries.filter((x) => x === c).length, first: new Date().toISOString() }} airmail /></li>
                 ))}
               </ul>
             )}
             <div className="am-actions">
-              <a className="tag" href={url} target="_blank" rel="noopener" onClick={() => track('airmail_share', { delivered: g.delivered.length, score: Math.round(g.score), guest })}>Share on X</a>
-              <button type="button" className="tag ghost" onClick={start}>Fly again</button>
+              <a className="tag" href={url} target="_blank" rel="noopener" onClick={() => track('airmail_share', { delivered: g.delivered.length, score: Math.round(g.score), mode })}>
+                <XMark /> Share your route
+              </a>
+              <button type="button" className="tag ghost" onClick={() => start(mode)}>Fly again</button>
+              {mode === 'mine' && !!daily?.letters.length && <button type="button" className="tag ghost" onClick={() => start('daily')}>{dayLabel}</button>}
+              {mode === 'daily' && ownReady && <button type="button" className="tag ghost" onClick={() => start('mine')}>Your mail</button>}
             </div>
-            {guest
-              ? <p className="fine">These were strangers’ letters. <Link href="/">Log in with X</Link> to fly yours.</p>
-              : <p className="fine">Stamps landed in <Link href="/me">your passport</Link>.</p>}
+            {!authed && (
+              <p className="am-login">
+                <button type="button" className="tag ghost" onClick={logIn}><XMark /> Log in to fly your own replies</button>
+              </p>
+            )}
+            {mode === 'mine' && <p className="fine">Stamps landed in <Link href="/me">your passport</Link>.</p>}
           </div>
         )
       })()}
     </div>
+  )
+}
+
+// ветер вдоль курса: попутный подгоняет, встречный тормозит — стрелка и процент от своей скорости
+function WindChip({ w }: { w: number }) {
+  if (Math.abs(w) < 0.08) return null
+  const tail = w > 0
+  return (
+    <p className={`am-wind ${tail ? 'tail' : 'head'}`}>
+      <svg viewBox="0 0 20 12" aria-hidden="true" style={{ rotate: tail ? '0deg' : '180deg' }}>
+        <path d="M1 6 H15 M11 2 L16 6 L11 10" />
+      </svg>
+      {tail ? 'Tailwind' : 'Headwind'} {tail ? '+' : '−'}{Math.round(Math.abs(w) * 100)}%
+    </p>
   )
 }

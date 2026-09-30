@@ -29,6 +29,8 @@ export function unlock() {
   } catch {
     return
   }
+  // фоновая вкладка: игра на паузе (rAF стоит) — звук тоже замолкает, а не играет в пустоту
+  document.addEventListener('visibilitychange', () => void (document.hidden ? ac?.suspend() : ac?.resume()))
   // ветер: петля шума через полосовой фильтр, громкость — от высоты и гроз
   const src = ac.createBufferSource()
   src.buffer = noise(ac, 2)

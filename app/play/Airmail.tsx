@@ -162,7 +162,8 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       if (stop || b.authed === false) return
       setAuthed(true)
       setXp(b.xp ?? 0)
-      if (isPlaneModel(b.plane) && unlocked(b.xp ?? 0, b.plane)) setPlane(b.plane)
+      // модель — только открытая серверным рангом (локальный выбор гостя мог быть другим)
+      setPlane(isPlaneModel(b.plane) && unlocked(b.xp ?? 0, b.plane) ? b.plane : 'dart')
       setMine(b)
       if (b.letters.length) setMode('mine')
       else if (b.collecting && tries < 15) timer = setTimeout(() => loadMine(tries + 1).catch(() => {}), 3000)
@@ -182,6 +183,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       stop = true
       clearTimeout(timer)
     }
+  }, [])
+
+  // ушли со страницы посреди полёта — музыка и ветер не должны играть дальше
+  useEffect(() => () => {
+    stopMusic()
+    silence()
   }, [])
 
   const home = useCallback((b: Bag) => (b.daily ? null : (b.home ?? (b.homeCountry ? at(b.homeCountry) : null))), [])

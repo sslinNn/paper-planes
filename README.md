@@ -12,6 +12,12 @@
 - **The physics is real.** Trade winds blow west and the westerlies blow east, drawn as streaks with a tailwind/headwind gauge. Your altitude is your shadow, and diving trades height for speed.
 - **Every run ends as a postcard.** Sharing makes a route image: your flight in airmail stripes over a riso map, a stamp on every country, and the score. It tags up to three of the people whose mail you delivered. Stamps also land in your passport on `/me`.
 
+## Ranks, a daily board and music
+
+- **Pilot ranks unlock airframes.** Letters delivered across all your runs raise your rank: Cadet flies the Dart, Courier unlocks the Glider (sinks slower, turns wider), Captain the Swallow (faster and sharper), and Ace the Crane (shrugs off storms and wind). Your airframe also flies your real replies on the live map.
+- **Today's Mail has a leaderboard.** Everyone flies the same sky, so the board is fair. It shows the top pilots of the day with their X handle and rank. The client computes the score; the server rejects anything impossible (letters, a score ceiling, the day, a rate limit).
+- **The music is generated as you fly.** A lo-fi loop in C, synthesized with WebAudio, whose melody is seeded by the day. It muffles as you lose altitude, the hi-hat doubles when you dive, and the pads detune in storms.
+
 ## Game feel, on purpose
 
 Based on first-hand sources (notes in `docs/research/`):

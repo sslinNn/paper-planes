@@ -21,13 +21,13 @@ function makeScreen(v: View, shakeX: number, shakeY: number) {
 }
 
 export function drawGlobeWorld(
-  ctx: CanvasRenderingContext2D, v: View, g: Game, fx: Fx, shake: number, pose: Pose = STILL, ghost: Ghost = null, clouds = true,
+  ctx: CanvasRenderingContext2D, v: View, g: Game, fx: Fx, shake: number, pose: Pose = STILL, ghost: Ghost = null, clouds = true, fills?: Map<string, string>,
 ): { px: number; py: number } {
   ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0)
   ctx.fillStyle = C.paper
   ctx.fillRect(0, 0, v.vw, v.vh)
   const { center, cam } = makeScreen(v, shake ? (Math.random() - 0.5) * shake : 0, shake ? (Math.random() - 0.5) * shake : 0)
-  const proj = drawGlobe(ctx, cam)
+  const proj = drawGlobe(ctx, cam, fills)
   const S = (x: number, y: number): Pt => {
     const p = ll(x, y)
     const [px, py] = proj(p)!
@@ -164,7 +164,7 @@ export function drawGlobeWorld(
   line(trail, C.pink, 2.4, [6, 6])
   ctx.lineDashOffset = 0
 
-  drawLetters(ctx, S, g.letters, g.target, k, g.t)
+  drawLetters(ctx, S, g.letters, g.target, k, g.t, g.alert)
 
   // события
   for (const h of g.hazards) {
@@ -357,7 +357,7 @@ function drawInk(ctx: CanvasRenderingContext2D, S: (x: number, y: number) => Pt,
   ctx.textBaseline = 'alphabetic'
 }
 
-function drawLetters(ctx: CanvasRenderingContext2D, S: (x: number, y: number) => Pt, letters: Letter[], target: number | null, k: number, t: number) {
+function drawLetters(ctx: CanvasRenderingContext2D, S: (x: number, y: number) => Pt, letters: Letter[], target: number | null, k: number, t: number, alert: string | null) {
   const seen = new Map<string, number>()
   for (const l of [...letters].sort((a, b) => Number(b.id === target) - Number(a.id === target))) {
     const [wx, wy] = targetPoint(l)
@@ -411,7 +411,7 @@ function drawLetters(ctx: CanvasRenderingContext2D, S: (x: number, y: number) =>
       ctx.stroke()
       label(ctx, `⏱ ${Math.ceil(Math.max(0, l.rush - t))}s`, c.x, c.y - 24, 1, C.pink, 12)
     }
-    if (n < 3) label(ctx, n === 2 ? '…' : `@${l.to_handle}`, c.x, c.y + h + 12 + n * 13, 1, on ? C.pink : C.soot)
+    if (n < 3) label(ctx, n === 2 ? '…' : `@${l.to_handle}${alert && l.to_country === alert ? ' ×3' : ''}`, c.x, c.y + h + 12 + n * 13, 1, on ? C.pink : C.soot)
   }
 }
 

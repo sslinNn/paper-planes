@@ -2,13 +2,13 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { at, projection, W } from '@/lib/geo'
-import { countryName } from '@/lib/country'
+import { countryName, countryNames, isCountry } from '@/lib/country'
 import { EFFECT, EMOJI, LABEL, type Kind } from '@/lib/letters'
 import {
   active, COMBO_WINDOW, CONDS, countryAt, headwind, MISSIONS, newGame, pickCond, select, shareText, step, tallyLine, targetPoint, TURN,
   type Cond, type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
 } from '@/lib/airmail'
-import { dailyShare, dayNumber, rng, routeCode, type Route } from '@/lib/postcard'
+import { dailyShare, dayNumber, flag, rng, routeCode, type Route } from '@/lib/postcard'
 import { rankOf, unlocked, type Rank } from '@/lib/ranks'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import Hangar, { NAMES } from '../me/Hangar'
@@ -18,6 +18,8 @@ import { PassportStamp, RubberFilter } from '../me/Passport'
 import { XMark } from '../icons'
 import { C, STILL, zoomFor, type Fx, type Ghost, type Pose, type View } from './draw'
 import { drawGlobeResult, drawGlobeWorld } from './globe-world'
+import { inkOf } from '@/lib/wars'
+import type { WarState } from '@/lib/wars-db'
 import { beep, chirp, crumple, honk, isMuted, rustle, setMusic, setMuted, setWind, silence, startMusic, stopMusic, thud, unlock } from './sound'
 
 export type Bag = {
@@ -111,6 +113,17 @@ const logIn = () => {
 
 // опыт гостя живёт в браузере; у залогиненного — на сервере (сумма забегов)
 const localXp = () => readNum('airmail-xp')
+// гость воюет за флаг, который выбрал; по умолчанию — регион из языка браузера (en-US → US)
+const localNation = (): string => {
+  try {
+    const saved = localStorage.getItem('airmail-nation')
+    if (saved && isCountry(saved)) return saved
+    const region = new Intl.Locale(navigator.language).maximize().region
+    return region && isCountry(region) ? region : 'US'
+  } catch {
+    return 'US'
+  }
+}
 const localPlane = (): PlaneModel => {
   try {
     const p = localStorage.getItem('airmail-plane')
@@ -152,7 +165,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const [board, setBoard] = useState<BoardRow[]>([])
   const [boardPlace, setBoardPlace] = useState<number | null>(null)
   const [promoted, setPromoted] = useState<Rank | null>(null)
+  const [wars, setWars] = useState<WarState | null>(null)
+  const [guestNation, setGuestNation] = useState(() => (typeof window === 'undefined' ? 'US' : localNation()))
+  const [alert, setAlert] = useState<string | null>(null)
+  const fills = useRef<Map<string, string> | undefined>(undefined)
   const xpRef = useRef(xp)
+  const nationRef = useRef('US')
   useEffect(() => {
     xpRef.current = xp
   }, [xp])
@@ -163,6 +181,25 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     phaseRef.current = phase
   }, [phase])
   const [failed, setFailed] = useState(false)
+
+  // Mail Wars: чьи флаги где стоят и событие часа (письма в эту страну ×3)
+  const loadWars = useCallback(() => {
+    get('/api/wars').then((r) => (r.ok ? r.json() : null)).then((w: WarState | null) => {
+      if (!w) return
+      fills.current = new Map(w.rulers.map(([c, n]) => [c, `${inkOf(n)}59`]))
+      setWars(w)
+    }).catch(() => {})
+  }, [])
+  const nation = mine?.homeCountry && isCountry(mine.homeCountry) ? mine.homeCountry : guestNation
+  useEffect(() => {
+    nationRef.current = nation
+  }, [nation])
+  const chooseNation = (c: string) => {
+    setGuestNation(c)
+    try {
+      localStorage.setItem('airmail-nation', c)
+    } catch {}
+  }
 
   // мешок дня для всех; личный — если вошёл. Вошёл прямо из игры — ждём, пока соберутся реплаи
   useEffect(() => {
@@ -209,11 +246,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       .catch(miss)
     loadMine(0).catch(() => {})
     get('/api/airmail/board').then((r) => r.json()).then((b: { rows: BoardRow[] }) => !stop && setBoard(b.rows)).catch(() => {})
+    loadWars()
     return () => {
       stop = true
       clearTimeout(timer)
     }
-  }, [])
+  }, [loadWars])
 
   // ушли со страницы посреди полёта — музыка и ветер не должны играть дальше
   useEffect(() => () => {
@@ -240,6 +278,10 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       origin = at(isos[Math.floor(Math.random() * isos.length)] ?? null)
     }
     const g = newGame(hand, b.weather, origin, b.sky ?? [], plane, { pool: shuffled.slice(hand.length), cond: c, rand })
+    // событие часа — только вне мешка дня: доска дня одинаково честна в любой час
+    const ev = wars?.event
+    g.alert = !b.daily && ev && ev.until > Date.now() ? ev.country : null
+    setAlert(g.alert)
     setCond(c)
     // сид дня: у всех одни и те же грозы и чужие самолётики; у каждого дня своя мелодия
     seeded.current = rand
@@ -255,7 +297,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     setResult(null)
     setPhase('flying')
     track('airmail_start', { mode: m, letters: b.letters.length, day: b.daily })
-  }, [mine, daily, free, home, plane])
+  }, [mine, daily, free, home, plane, wars])
 
   // события игры: вес штампа, очки, звук, вибрация, обрывки бумаги, штамп в паспорт
   useEffect(() => {
@@ -377,7 +419,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       follow(view.current, g, dt, calm)
       // карточка по центру (на телефоне — внизу): самолётик летает сбоку от неё, а не под ней
       const v = view.current
-      drawGlobeWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : { ...v, cx: v.cx - (v.vw * 0.33) / v.z }, g, none, 0)
+      drawGlobeWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : { ...v, cx: v.cx - (v.vw * 0.33) / v.z }, g, none, 0, STILL, null, true, fills.current)
       if (!calm) raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
@@ -447,6 +489,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
         promote(before + g.delivered.length)
       }
       writeNum('airmail-runs', readNum('airmail-runs') + 1)
+      // Mail Wars: доставленные страны уходят под флаг пилота
+      if (countries.some((c) => c !== 'AQ'))
+        fetch('/api/wars', { method: 'POST', body: JSON.stringify({ nation: nationRef.current, countries }) }).then(loadWars, () => {})
       const score = Math.round(g.score)
       if (score > readNum('airmail-best-score')) {
         writeNum('airmail-best-score', score)
@@ -513,7 +558,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       const ghost = g.done ? null : ghostAt(ghostTrail, g.t)
       // старт — пикирование с орбиты: первые полторы секунды камера падает от целой планеты к самолётику
       const orbit = calm ? 1 : 1 - (1 - Math.min(1, g.t / 1.5)) ** 3
-      planeAt.current = drawGlobeWorld(ctx, orbit < 1 ? { ...v, z: v.z * (0.2 + 0.8 * orbit) } : v, g, f, calm ? 0 : Math.max(shake.current, g.inStorm ? 5 : 0), p, ghost)
+      planeAt.current = drawGlobeWorld(ctx, orbit < 1 ? { ...v, z: v.z * (0.2 + 0.8 * orbit) } : v, g, f, calm ? 0 : Math.max(shake.current, g.inStorm ? 5 : 0), p, ghost, true, fills.current)
 
       if (!g.done && g.alt < LOW && now - beepAt > 180 + g.alt * 25) {
         beepAt = now
@@ -546,7 +591,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', vis)
     }
-  }, [phase, touch, bag, authed, mode])
+  }, [phase, touch, bag, authed, mode, loadWars])
 
   const pick = useCallback((id: number) => {
     if (!game.current) return
@@ -639,6 +684,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
             <WindChip w={hud.wind} />
             {cond.id !== 'fair' && <p className="am-cond" key={cond.id}><b>{cond.name}</b> · {cond.blurb}</p>}
             {hud.mission && <p className="am-mission">🎯 {hud.mission}</p>}
+            {alert && <p className="am-alert">{flag(alert)} {countryName(alert)}: letters there ×3 this hour</p>}
           </div>
           <div className="am-alt" role="meter" aria-label="Altitude" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hud.alt)}>
             <span style={{ transform: `scaleY(${hud.alt / 100})` }} />
@@ -656,7 +702,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
                 <button type="button" className={`${l.id === hud.target ? 'on' : ''}${l.rush !== undefined ? ' rush' : ''}`} aria-pressed={l.id === hud.target} onClick={() => pick(l.id)}>
                   <span className="k" title={l.rush !== undefined ? 'Rush letter: ×3' : LABEL[l.kind ?? 'plain']}>{l.rush !== undefined ? '⏱' : EMOJI[l.kind ?? 'plain']}</span>
                   <span className="to">@{l.to_handle}</span>
-                  <span className="c">{i < 9 ? `${i + 1} · ` : ''}{l.rush !== undefined ? `${Math.max(0, Math.ceil(l.rush - hud.t))}s · ×3 · ` : ''}{place(l.to_country)}</span>
+                  <span className="c">{i < 9 ? `${i + 1} · ` : ''}{l.rush !== undefined ? `${Math.max(0, Math.ceil(l.rush - hud.t))}s · ×3 · ` : alert && l.to_country === alert ? '×3 · ' : ''}{place(l.to_country)}</span>
                 </button>
               </li>
             ))}
@@ -726,6 +772,20 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
               <button type="button" className="tag outline" onClick={() => location.reload()}>Try again</button>
             </p>
           )}
+          <div className="am-wars">
+            {mine?.homeCountry && isCountry(mine.homeCountry) ? (
+              <p className="fine">Mail Wars: you fly for <b>{flag(nation)} {countryName(nation)}</b>. Every letter you land paints its country your flag.</p>
+            ) : (
+              <label className="fine">
+                Mail Wars: every letter you land paints its country your flag. Fly for{' '}
+                <select value={guestNation} onChange={(e) => chooseNation(e.target.value)}>
+                  {countryNames().filter(([c]) => c !== 'AQ').map(([c, n]) => <option key={c} value={c}>{flag(c)} {n}</option>)}
+                </select>
+              </label>
+            )}
+            {wars?.empires[0] && <p className="fine">{flag(wars.empires[0].nation)} {countryName(wars.empires[0].nation)} rules {wars.empires[0].countries} {wars.empires[0].countries === 1 ? 'country' : 'countries'} this week.</p>}
+            {wars?.event && <p className="fine am-event"><b>{wars.event.hot ? 'Storm alert' : 'Rush hour'}</b> {flag(wars.event.country)} {countryName(wars.event.country)}: letters there score ×3 this hour (not in {dayLabel}).</p>}
+          </div>
           <Hangar xp={xp} plane={plane} onPlane={choosePlane} compact />
           {!!board.length && <p className="fine am-leader">Today’s leader: <b>@{board[0].handle}</b> · {fmt(board[0].score)}</p>}
           {!!dayBest && <p className="fine">Your best today: {fmt(dayBest)} · your ghost flies with you</p>}
@@ -758,6 +818,10 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
               {g.missionsDone ? <> · <strong>{g.missionsDone}</strong> {g.missionsDone === 1 ? 'mission' : 'missions'}</> : null}
             </p>
             {g.cond.id !== 'fair' && <p className="fine">Weather: {g.cond.name}</p>}
+            {unique.some((c) => c !== 'AQ') && (
+              <p className="am-claim">{flag(nation)} {countryName(nation)} claims {unique.filter((c) => c !== 'AQ').map((c) => flag(c)).join(' ')}
+                {wars?.rulers.length ? <> · <Link href="/">see the war</Link></> : null}</p>
+            )}
             {promoted && (
               <p className="am-promo">Promoted: <b>{promoted.name}</b> · {NAMES[promoted.plane]} unlocked</p>
             )}

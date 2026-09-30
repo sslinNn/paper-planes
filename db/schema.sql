@@ -95,3 +95,19 @@ create table if not exists airmail_runs (
 );
 create index if not exists airmail_runs_board on airmail_runs (day, mode, score desc);
 create index if not exists airmail_runs_user on airmail_runs (user_id);
+
+-- MAIL WARS: каждое доставленное письмо закрашивает страну флагом пилота. Правит страной нация, чья почта долетела туда чаще за неделю
+create table if not exists wars (
+  id int generated always as identity primary key,
+  nation text not null,
+  country text not null,
+  n int not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists wars_recent on wars (created_at);
+-- первый запуск: война начинается с уже сыгранных забегов (страна пилота → страны его доставок)
+insert into wars (nation, country, n, created_at)
+select u.country, substring(r.countries from i * 2 + 1 for 2), 1, r.created_at
+from airmail_runs r join "user" u on u.id = r.user_id
+cross join lateral generate_series(0, length(r.countries) / 2 - 1) i
+where u.country is not null and substring(r.countries from i * 2 + 1 for 2) <> 'AQ' and not exists (select 1 from wars);

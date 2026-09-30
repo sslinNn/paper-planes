@@ -667,3 +667,26 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .view-toggle button + button { border-left: 1.5px solid var(--soot); }
 .view-toggle button[aria-pressed="true"] { background: var(--pink); }
 .view-toggle button:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* Mail Wars: панель поверх глобуса */
+.wars { position: absolute; top: 12px; right: var(--pad); z-index: 6; width: min(300px, calc(100% - 2 * var(--pad))); padding: 12px 14px; display: grid; gap: 6px;
+  background: var(--paper); border: 1.5px solid var(--soot); box-shadow: 4px 4px 0 var(--pink); }
+.wars p { margin: 0; }
+.wars-kicker { font: 800 .72rem var(--font-text); letter-spacing: .12em; text-transform: uppercase; color: var(--blue); }
+.wars-lead { font: 800 1.05rem/1.2 var(--font-text); }
+.wars-rest { font: 700 .85rem var(--font-text); }
+.wars-alert { font: 600 .82rem/1.35 var(--font-text); padding-top: 6px; border-top: 1.5px dashed var(--soot); }
+.wars-alert b { color: var(--pink); text-transform: uppercase; letter-spacing: .06em; }
+.wars .tag { justify-self: start; }
+@media (max-width: 720px) {
+  .wars { top: 8px; padding: 8px 10px; gap: 4px; box-shadow: 3px 3px 0 var(--pink); }
+  .wars-alert { font-size: .76rem; }
+  .wars .tag { display: none; } /* в шапке уже есть «Play Airmail» */
+}
+.am-alert { margin: 0; padding: 4px 8px; background: var(--pink); color: var(--soot); font: 800 .8rem var(--font-text); border: 1.5px solid var(--soot); }
+.am-wars { display: grid; gap: 4px; }
+.am-wars p, .am-wars label { margin: 0; }
+.am-wars select { font: 700 .85rem var(--font-text); padding: 2px 4px; border: 1.5px solid var(--soot); background: var(--paper); color: var(--soot); max-width: 100%; }
+.am-event b, .am-claim { color: var(--pink); }
+.am-claim { margin: 0; font: 800 .95rem var(--font-text); }
+.am-claim a { color: var(--blue); }

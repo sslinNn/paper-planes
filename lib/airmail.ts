@@ -77,6 +77,7 @@ export type Game = {
   pool: Letter[]; cond: Cond; hazards: Hazard[]; nextEvent: number; inGust: boolean; rushSeq: number
   mission: { id: MissionId; have: number } | null; missionsDone: number
   drop: [number, number] | null // где легло прошлое письмо: следующее — только после нового захода
+  alert: string | null // мировое событие часа (Mail Wars): письма в эту страну ×3, как срочные — не складываются
 }
 
 // ---------- константы (крутятся плейтестом) ----------
@@ -214,7 +215,7 @@ export function newGame(
     startIso: countryAt(origin), left: false, diving: false, plane,
     trail: [[x, y]], km: 0, inStorm: false, done: false, won: false,
     pool: [...(extra.pool ?? [])], cond, hazards: [], nextEvent: FIRST_EVENT, inGust: false, rushSeq: -1,
-    mission: null, missionsDone: 0, drop: null,
+    mission: null, missionsDone: 0, drop: null, alert: null,
   }
   nextMission(g, extra.rand ?? Math.random)
   g.target = nearest(g)
@@ -452,7 +453,7 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   if (letter && !g.drop && !local(g, letter) && reached(g, letter)) {
     g.combo = g.t - g.lastDelivery < COMBO_WINDOW ? g.combo + 1 : 1
     g.lastDelivery = g.t
-    const points = Math.round((100 + g.leg / 10) * m.score * Math.min(g.combo, COMBO_MAX) * (letter.rush !== undefined ? 3 : 1))
+    const points = Math.round((100 + g.leg / 10) * m.score * Math.min(g.combo, COMBO_MAX) * (letter.rush !== undefined || (!!g.alert && letter.to_country === g.alert) ? 3 : 1))
     g.score += points
     const leg = g.leg
     g.leg = 0

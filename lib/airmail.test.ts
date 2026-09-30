@@ -280,6 +280,21 @@ test('rush letters pay triple and burn when the timer runs out', () => {
   assert.ok(!late.letters.some((l) => l.id === 2))
 })
 
+test('world event country pays triple, and does not stack with rush', () => {
+  const run = (alert: string | null, rush?: number) => {
+    const g = newGame([L(1, 'JP'), { ...L(2, 'DE'), rush }], [], [2.35, 48.85])
+    g.left = true
+    g.alert = alert
+    select(g, 2)
+    onTarget(g, g.letters[1])
+    const [e] = step(g, still, 0.01, rand)
+    return e.type === 'delivered' ? e.points : NaN
+  }
+  assert.equal(run('DE'), run(null) * 3)
+  assert.equal(run('FR'), run(null))
+  assert.equal(run('DE', 5), run(null, 5))
+})
+
 test('missions: completing one rewards and hands out the next', () => {
   const g = newGame([L(1, 'JP')], [], [10.4, 51.1])
   g.mission = { id: 'balloon', have: 0 }

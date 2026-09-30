@@ -1,10 +1,14 @@
 'use client'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { at } from '@/lib/geo'
 import { clampTilt, flightAt, flightSeconds, onFront, type LonLat } from '@/lib/globe'
 import { geoDistance } from 'd3-geo'
 import { countryOf, type PlaneRow } from '@/lib/sky'
 import { isPlaneModel } from '@/lib/patrons'
+import { countryName } from '@/lib/country'
+import { flag } from '@/lib/postcard'
+import { inkOf } from '@/lib/wars'
+import type { WarState } from '@/lib/wars-db'
 import { drawArc, drawDart, drawGlobe, drawLiftedArc, INK, label, lifted, type Cam } from './globe-draw'
 
 type Flight = { p: PlaneRow; a: LonLat; b: LonLat; t0: number; dur: number; top: number }
@@ -18,15 +22,27 @@ const TRAIL_FADE = 1.6 // секунд тает след после посадк
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 // глобус главной: настоящие реплаи летят по большим кругам; тащишь — крутится с инерцией, колесо/щипок — ближе
-export default function Globe({ planes, lead, fills }: { planes: PlaneRow[]; lead?: string | null; fills?: Map<string, string> }) {
+export default function Globe({ planes, lead }: { planes: PlaneRow[]; lead?: string | null }) {
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const planesRef = useRef(planes)
-  const fillsRef = useRef(fills)
+  const [wars, setWars] = useState<WarState | null>(null)
+  const warsRef = useRef<{ fills: Map<string, string>; state: WarState } | null>(null)
   useEffect(() => {
     planesRef.current = planes
-    fillsRef.current = fills
-  }, [planes, fills])
+  }, [planes])
+  // Mail Wars: чьи флаги правят странами — опрашиваем раз в полминуты
+  useEffect(() => {
+    const load = () =>
+      fetch('/api/wars').then((r) => (r.ok ? r.json() : null)).then((w: WarState | null) => {
+        if (!w) return
+        warsRef.current = { state: w, fills: new Map(w.rulers.map(([c, nation]) => [c, `${inkOf(nation)}8c`])) }
+        setWars(w)
+      }).catch(() => {})
+    load()
+    const id = setInterval(load, 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     const el = box.current!
@@ -145,9 +161,35 @@ export default function Globe({ planes, lead, fills }: { planes: PlaneRow[]; lea
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.fillStyle = INK.paper
       ctx.fillRect(0, 0, w, h)
-      const proj = drawGlobe(ctx, cam, fillsRef.current)
+      const war = warsRef.current
+      const proj = drawGlobe(ctx, cam, war?.fills)
       const center: LonLat = [cam.lon, cam.lat]
       const size = Math.max(0.55, cam.r / 330)
+      if (war) {
+        // флаг правящей нации над каждой захваченной страной
+        ctx.font = `${Math.round(13 * size)}px system-ui, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        for (const [c, nation] of war.state.rulers) {
+          const p = at(c)
+          if (!onFront(p, center)) continue
+          const [x, y] = proj(p)!
+          ctx.fillText(flag(nation), x, y)
+        }
+        ctx.textBaseline = 'alphabetic'
+        // событие часа: пульсирующее кольцо над страной, куда сейчас летит больше всего реплаев
+        const ev = war.state.event
+        if (ev && onFront(at(ev.country), center)) {
+          const [x, y] = proj(at(ev.country))!
+          const q = (now / 1400) % 1
+          ctx.strokeStyle = `rgb(255 72 176 / ${(1 - q).toFixed(3)})`
+          ctx.lineWidth = 3
+          ctx.beginPath()
+          ctx.arc(x, y, (10 + q * 30) * size, 0, Math.PI * 2)
+          ctx.stroke()
+          label(ctx, '×3', x, y - 16 * size, INK.pink, 13)
+        }
+      }
 
       for (let i = air.length - 1; i >= 0; i--) {
         const f = air[i]
@@ -220,6 +262,35 @@ export default function Globe({ planes, lead, fills }: { planes: PlaneRow[]; lea
     <div className="globe-stage" ref={box}>
       <canvas ref={canvas} className="globe-canvas" role="img" aria-label="Globe of replies on X flying as paper planes. Drag to spin." />
       <p className="globe-hint" aria-hidden="true">Drag to spin the planet</p>
+      {wars && <WarsPanel w={wars} />}
     </div>
+  )
+}
+
+// панель Mail Wars поверх глобуса: чья почта правит миром и событие часа
+function WarsPanel({ w }: { w: WarState }) {
+  const [top, ...rest] = w.empires
+  const ev = w.event
+  return (
+    <aside className="wars" aria-label="Mail Wars">
+      <p className="wars-kicker">Mail Wars · this week</p>
+      {top ? (
+        <p className="wars-lead">
+          <span aria-hidden="true">{flag(top.nation)}</span> {countryName(top.nation)} rules {top.countries} {top.countries === 1 ? 'country' : 'countries'}
+        </p>
+      ) : (
+        <p className="wars-lead">No flags yet. Deliver a letter to plant yours.</p>
+      )}
+      {rest.length > 0 && (
+        <p className="wars-rest">{rest.map((e) => `${flag(e.nation)} ${e.countries}`).join('  ·  ')}</p>
+      )}
+      {ev && (
+        <p className="wars-alert">
+          <b>{ev.hot ? 'Storm alert' : 'Rush hour'}</b> {flag(ev.country)} {countryName(ev.country)}: {ev.n} replies flying there. Letters to it score ×3 until{' '}
+          {new Date(ev.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </p>
+      )}
+      <a className="tag" href="/play">Fly for your flag</a>
+    </aside>
   )
 }

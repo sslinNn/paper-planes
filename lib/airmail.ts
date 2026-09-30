@@ -21,8 +21,8 @@ export type Game = {
 
 export const SPEED = 25 // единиц карты (ширина 1000) в секунду
 export const TURN = 2.6 // рад/с
-export const SINK = 4 // высоты в секунду
-export const DELIVERY_LIFT = 40
+export const SINK = 6.5 // высоты в секунду (плейтест автопилотом: 40–90% писем без термиков)
+export const DELIVERY_LIFT = 30
 export const THERMAL_LIFT = 15
 export const THERMAL_CHARGE = 30 // сколько высоты термик отдаёт за игру — кружить вечно нельзя
 export const STORM_SINK = 12
@@ -81,7 +81,10 @@ function nearest(g: Game): number | null {
   for (const l of g.letters) {
     const [tx, ty] = targetPoint(l)
     const d = dist(g.x, g.y, tx, ty)
-    if (d < bd) (bd = d), (best = l)
+    if (d < bd) {
+      bd = d
+      best = l
+    }
   }
   return best?.id ?? null
 }

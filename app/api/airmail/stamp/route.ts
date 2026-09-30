@@ -11,5 +11,7 @@ export async function POST(req: Request) {
   const planeId = body?.planeId
   if (!Number.isInteger(planeId) || planeId <= 0 || planeId > 2 ** 31 - 1) return new Response('bad planeId', { status: 400 })
   if (await limited(`airmail:${s.user.id}`, 60, 3600)) return new Response(null, { status: 429 })
-  return new Response(null, { status: (await stamp(s.user.id, planeId)) ? 204 : 409 })
+  // повторная доставка того же письма — не ошибка: штамп уже в паспорте. Чужое письмо штамп просто не ставит
+  await stamp(s.user.id, planeId)
+  return new Response(null, { status: 204 })
 }

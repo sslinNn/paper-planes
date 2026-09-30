@@ -5,7 +5,7 @@ import { greeting, stampDesign, type StampDesign } from '@/lib/stamps'
 import { Arrow } from '../icons'
 
 export type Stamp = { country: string; count: number; first: string }
-type Props = { handle: string; image?: string | null; home: string | null; stamps: Stamp[]; patronSince?: string | null }
+type Props = { handle: string; image?: string | null; home: string | null; stamps: Stamp[]; patronSince?: string | null; airmail?: Stamp[] }
 
 const PER_PAGE = 4
 const fmt = (iso: string) => new Date(iso).toLocaleDateString('en', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()
@@ -43,19 +43,19 @@ function Motif({ motif }: { motif: StampDesign['motif'] }) {
   }
 }
 
-export function PassportStamp({ stamp }: { stamp: Stamp }) {
+export function PassportStamp({ stamp, airmail }: { stamp: Stamp; airmail?: boolean }) {
   const d = stampDesign(stamp.country)
   const name = countryName(stamp.country).toUpperCase()
   const hello = greeting(stamp.country)
   return (
-    <svg className="visa" viewBox="0 0 200 150" style={{ '--visa': INK(d.hue), rotate: `${d.tilt}deg` } as React.CSSProperties} role="img" aria-label={`${name} stamp, first landed ${fmt(stamp.first)}, ${stamp.count} planes`}>
+    <svg className={airmail ? 'visa airmail-visa' : 'visa'} viewBox="0 0 200 150" style={{ '--visa': INK(d.hue), rotate: `${d.tilt}deg` } as React.CSSProperties} role="img" aria-label={`${name} stamp, first landed ${fmt(stamp.first)}, ${stamp.count} planes`}>
       <g filter="url(#rubber)">
         <g className="visa-line"><Shape shape={d.shape} /></g>
         <text className="visa-hello" x="100" y="46" {...(hello.length > 11 ? { textLength: 118, lengthAdjust: 'spacingAndGlyphs' } : {})}>{hello}</text>
         <text className="visa-name" x="100" y="78" {...(name.length > 10 ? { textLength: 136, lengthAdjust: 'spacingAndGlyphs' } : {})}>{name}</text>
         <g className="visa-line"><Motif motif={d.motif} /></g>
         <text className="visa-small" x="100" y="124">{fmt(stamp.first)} · ×{stamp.count}</text>
-        <text className="visa-small visa-serial" x="100" y="134">{d.serial}</text>
+        <text className="visa-small visa-serial" x="100" y="134">{airmail ? 'PAR AVION · AIRMAIL' : d.serial}</text>
       </g>
     </svg>
   )
@@ -122,16 +122,31 @@ function IdentityPage(props: Props) {
   )
 }
 
-function VisaPage({ stamps, n, patronSince }: { stamps: Stamp[]; n: number; patronSince?: string | null }) {
+function VisaPage({ stamps, n, patronSince, title = 'Visas', airmail }: { stamps: Stamp[]; n: number; patronSince?: string | null; title?: string; airmail?: boolean }) {
   return (
     <div className="page visas">
-      <p className="doc-head">Visas <span>{n}</span></p>
+      <p className="doc-head">{title} <span>{n}</span></p>
       <ul className="visa-grid">
         {patronSince && <li key="patron"><PatronStamp since={patronSince} /></li>}
-        {stamps.map((s) => <li key={s.country}><PassportStamp stamp={s} /></li>)}
+        {stamps.map((s) => <li key={s.country}><PassportStamp stamp={s} airmail={airmail} /></li>)}
       </ul>
       {!stamps.length && <p className="blank">Empty page. Reply to someone abroad on X and your next plane stamps it.</p>}
     </div>
+  )
+}
+
+// резиновый штамп: рваная кромка и пропуски краски. Нужен на странице один раз — паспорт и игра
+export function RubberFilter() {
+  return (
+    <svg width="0" height="0" aria-hidden="true" style={{ position: 'absolute' }}>
+      <filter id="rubber">
+        <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="4" result="grain" />
+        <feDisplacementMap in="SourceGraphic" in2="grain" scale="2.2" result="rough" />
+        <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="1" seed="9" result="speck" />
+        <feColorMatrix in="speck" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -14 9" result="holes" />
+        <feComposite in="rough" in2="holes" operator="in" />
+      </filter>
+    </svg>
   )
 }
 
@@ -150,6 +165,10 @@ export default function Passport(props: Props) {
     <IdentityPage key="id" {...props} />,
     ...visas.map((s, i) => <VisaPage key={i} stamps={s} n={i + 1} patronSince={i === 0 ? props.patronSince : null} />),
   ]
+  // штампы из игры AIRMAIL — своими страницами после виз
+  const air = props.airmail ?? []
+  for (let i = 0; i < air.length; i += PER_PAGE)
+    pages.push(<VisaPage key={`am${i}`} stamps={air.slice(i, i + PER_PAGE)} n={i / PER_PAGE + 1} title="Airmail" airmail />)
   if (pages.length % 2) pages.push(<VisaPage key="blank" stamps={[]} n={visas.length + 1} />)
 
   const [single, setSingle] = useState(false)
@@ -212,16 +231,7 @@ export default function Passport(props: Props) {
 
   return (
     <section className="passport-book" aria-label="Your paper planes passport">
-      {/* резиновый штамп: рваная кромка и пропуски краски */}
-      <svg width="0" height="0" aria-hidden="true" style={{ position: 'absolute' }}>
-        <filter id="rubber">
-          <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="4" result="grain" />
-          <feDisplacementMap in="SourceGraphic" in2="grain" scale="2.2" result="rough" />
-          <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="1" seed="9" result="speck" />
-          <feColorMatrix in="speck" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -14 9" result="holes" />
-          <feComposite in="rough" in2="holes" operator="in" />
-        </filter>
-      </svg>
+      <RubberFilter />
       <div
         className={`book${single ? ' single' : ''}${props.patronSince ? ' diplomatic' : ''}`}
         onPointerDown={(e) => (startX.current = e.clientX)}

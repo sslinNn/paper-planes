@@ -4,6 +4,7 @@ import { countryName } from '@/lib/country'
 import { at, distance, EARTH_KM, graticule, H, isoOf, land, path, projection, W } from '@/lib/geo'
 import { countryOf, flightLog, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
+import { AIRFRAMES } from '@/lib/airframes'
 import { Close } from './icons'
 import Live from './Live'
 import { OWNER } from '@/lib/site'
@@ -543,40 +544,8 @@ function Arrivals({ planes }: { planes: PlaneRow[] }) {
 
 // модели самолётиков: у всех бумажный дротик, донатеры выбирают свою (все смотрят носом по +x)
 export function Airframe({ model }: { model: PlaneModel }) {
-  switch (model) {
-    case 'glider':
-      return (
-        <>
-          <path className="wing" d="M15 0 L-9 -1.6 L-9 1.6 Z" />
-          <path className="wing" d="M3 -1 L-1 -14 L-5 -14 L-4 -1 Z" />
-          <path className="wing" d="M3 1 L-1 14 L-5 14 L-4 1 Z" />
-          <path className="fold" d="M-6 -1 L-10 -5 L-11 -5 L-9 0 L-11 5 L-10 5 L-6 1 Z" />
-        </>
-      )
-    case 'swallow':
-      return (
-        <>
-          <path className="wing" d="M14 0 L-2 -11 L-13 -13 L-5 -2 L-13 5 L-2 4 Z" />
-          <path className="fold" d="M14 0 L-5 -2 L-13 5 L-2 4 Z" />
-        </>
-      )
-    case 'crane':
-      return (
-        <>
-          <path className="wing" d="M4 0 L-3 -14 L-6 0 Z" />
-          <path className="wing" d="M15 -5 L3 1 L-6 1 L-15 -4 L-7 4 L5 4 Z" />
-          <path className="fold" d="M4 0 L-2 9 L-6 1 Z" />
-        </>
-      )
-    default:
-      return (
-        <>
-          <path className="wing" d="M13 0 L-10 -9 L-4 0 Z" />
-          <path className="wing" d="M13 0 L-4 0 L-9 6 Z" />
-          <path className="fold" d="M13 0 L-4 0 L-9 6 Z" />
-        </>
-      )
-  }
+  const a = AIRFRAMES[model] ?? AIRFRAMES.dart
+  return <>{a.wing.map((d) => <path key={d} className="wing" d={d} />)}{a.fold.map((d) => <path key={`f${d}`} className="fold" d={d} />)}</>
 }
 
 function arc(a: Point, b: Point) {

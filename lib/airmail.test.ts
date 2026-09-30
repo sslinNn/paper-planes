@@ -64,7 +64,7 @@ test('delivery lifts, removes the letter, retargets; question lifts double', () 
   g.alt = 10
   const ev = step(g, still, 0.01, rand)
   assert.equal(ev[0].type, 'delivered')
-  assert.ok(g.alt > 85, `alt ${g.alt}`)
+  assert.ok(g.alt > 65, `alt ${g.alt}`) // 10 + 30 × 2
   assert.deepEqual(g.letters.map((l) => l.id), [2])
   assert.equal(g.target, 2)
   assert.equal(g.delivered.length, 1)

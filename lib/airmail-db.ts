@@ -21,14 +21,17 @@ export async function weatherRows(): Promise<CountryWeather[]> {
   return (week.rows.length >= 5 ? week : await q('100 years')).rows
 }
 
+// письма с известной страной адресата вперёд: мешок из одних «в Антарктиду» скучный — туда одно, для шутки про пингвинов
+function pickLetters(rows: PlaneRow[], n: number): Letter[] {
+  const known = rows.filter((p) => p.to_country)
+  const fog = rows.filter((p) => !p.to_country).slice(0, known.length >= 4 ? 1 : 6 - known.length)
+  return [...known.slice(0, n - fog.length), ...fog].map(toLetter)
+}
+
 // гость: 12 случайных из последних 500 самолётиков общего неба
 export async function guestBag() {
   const [recent, weather] = await Promise.all([planeRows('true', [], 500), weatherRows()])
-  // письма с известной страной адресата вперёд: мешок из одних «в Антарктиду» скучный. Одно такое — для шутки про пингвинов
-  const shuffled = recent.sort(() => Math.random() - 0.5)
-  const known = shuffled.filter((p) => p.to_country)
-  const fog = known.length >= 4 ? 1 : 6 - known.length
-  const letters = [...known.slice(0, 11), ...shuffled.filter((p) => !p.to_country).slice(0, fog)].map(toLetter)
+  const letters = pickLetters(recent.sort(() => Math.random() - 0.5), 12)
   return { guest: true, handle: null, home: null, homeCountry: null, letters, weather, bag: tally(letters) }
 }
 
@@ -38,8 +41,8 @@ export async function userBag(userId: string) {
     `select u.handle, u.country, u.spot_lon, u.spot_lat, a."accountId" as x_id
      from "user" u join account a on a."userId" = u.id and a."providerId" = 'twitter' where u.id = $1`, [userId])
   if (!u) return null
-  const [rows, weather] = await Promise.all([planeRows('(p.from_x_id = $1 or p.to_x_id = $1)', [u.x_id], 20), weatherRows()])
-  const letters = rows.map(toLetter)
+  const [rows, weather] = await Promise.all([planeRows('(p.from_x_id = $1 or p.to_x_id = $1)', [u.x_id], 100), weatherRows()])
+  const letters = pickLetters(rows, 20)
   const home: [number, number] | null = u.spot_lon != null ? [u.spot_lon, u.spot_lat] : null
   return { guest: false, handle: u.handle as string | null, home, homeCountry: u.country as string | null, letters, weather, bag: tally(letters) }
 }

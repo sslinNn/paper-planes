@@ -4,6 +4,7 @@ export type PlaneRow = {
   created_at?: string
   from_plane?: string | null
   from_patron?: boolean
+  kind?: string | null
 }
 export type CountrySky = { out: number; in: number; people: [string, number][]; destinations: [string, number][] }
 

@@ -7,6 +7,7 @@ import { inCountry } from '@/lib/geo'
 import { isPlaneModel } from '@/lib/patrons'
 import { pool } from '@/lib/db'
 import { stampsOf } from '@/lib/pilot-db'
+import { airmailStampsOf } from '@/lib/airmail-db'
 import { syncDonations } from '@/lib/donations'
 import { limited } from '@/lib/ratelimit'
 
@@ -24,9 +25,9 @@ export async function GET(req: Request) {
      from "user" where id = $1`, [s.user.id])
   const me = rows[0]
   if (!me.since_id) after(() => collect(s.user.id)) // новый юзер — сразу собрать его реплаи
-  const stamps = await stampsOf(s.user.id)
+  const [stamps, airmail] = await Promise.all([stampsOf(s.user.id), airmailStampsOf(s.user.id)])
   return Response.json({
-    handle: me.handle, country: me.country, image: me.image, stamps,
+    handle: me.handle, country: me.country, image: me.image, stamps, airmail,
     spot: me.spot_lon == null ? null : [me.spot_lon, me.spot_lat],
     patronSince: me.patron_since, plane: me.plane ?? 'dart',
     donations: !!(process.env.LAVA_API_KEY && process.env.LAVA_OFFER_ID),

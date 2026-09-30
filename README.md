@@ -12,6 +12,13 @@
 - **The physics is real.** Trade winds blow west and the westerlies blow east, drawn as streaks with a tailwind/headwind gauge. Your altitude is your shadow, and diving trades height for speed.
 - **Every run ends as a postcard.** Sharing makes a route image: your flight in airmail stripes over a riso map, a stamp on every country, and the score. It tags up to three of the people whose mail you delivered. Stamps also land in your passport on `/me`.
 
+## A living planet
+
+- **The home page is a globe.** Real replies fly great circles and rise off the surface in 3D arcs, casting shadows on the land. Drag it, flick it, pinch it. The flat map is one tap away.
+- **The game flies on the globe too.** The camera rides above your plane, the horizon curves away, and every run starts with a dive from orbit.
+- **Mail Wars.** Every letter you land paints its country with your flag. The nation whose mail landed most often this week rules that country, and the globe shows the empires in riso ink. Guests pick a flag; X users fly for the country in their profile.
+- **Rush hour.** Each hour, the country receiving the most real replies on X lights up on the globe, and letters sent there score ×3 until the hour ends. The daily board is exempt, so it stays fair.
+
 ## Ranks, a daily board and music
 
 - **Pilot ranks unlock airframes.** Letters delivered across all your runs raise your rank: Cadet flies the Dart, Courier unlocks the Glider (sinks slower, turns wider), Captain the Swallow (faster and sharper), and Ace the Crane (shrugs off storms and wind). Your airframe also flies your real replies on the live map.

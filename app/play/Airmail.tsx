@@ -16,7 +16,8 @@ import { authClient } from '@/lib/auth-client'
 import { track } from '@/lib/track'
 import { PassportStamp, RubberFilter } from '../me/Passport'
 import { XMark } from '../icons'
-import { C, drawResult, drawWorld, STILL, toScreen, zoomFor, type Fx, type Ghost, type Pose, type View } from './draw'
+import { C, STILL, zoomFor, type Fx, type Ghost, type Pose, type View } from './draw'
+import { drawGlobeResult, drawGlobeWorld } from './globe-world'
 import { beep, chirp, crumple, honk, isMuted, rustle, setMusic, setMuted, setWind, silence, startMusic, stopMusic, thud, unlock } from './sound'
 
 export type Bag = {
@@ -128,6 +129,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const pose = useRef<Pose>({ ...STILL })
   const freeze = useRef(0)
   const shake = useRef(0)
+  const planeAt = useRef({ px: 0, py: 0 }) // где самолётик на экране — курс считается от него
   const seeded = useRef<() => number>(Math.random)
   const onEvents = useRef<(ev: GameEvent[], g: Game) => void>(() => {})
   const [phase, setPhase] = useState<Phase>('loading')
@@ -348,7 +350,6 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       c.width = Math.round(innerWidth * dpr)
       c.height = Math.round(innerHeight * dpr)
       view.current = { ...view.current, vw: innerWidth, vh: innerHeight, dpr, z: zoomFor(innerWidth, innerHeight) }
-      if (game.current?.done) drawResult(c.getContext('2d')!, innerWidth, innerHeight, dpr, game.current)
     }
     fit()
     addEventListener('resize', fit)
@@ -376,7 +377,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       follow(view.current, g, dt, calm)
       // карточка по центру (на телефоне — внизу): самолётик летает сбоку от неё, а не под ней
       const v = view.current
-      drawWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : { ...v, cx: v.cx - (v.vw * 0.33) / v.z }, g, none, 0)
+      drawGlobeWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : { ...v, cx: v.cx - (v.vw * 0.33) / v.z }, g, none, 0)
       if (!calm) raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
@@ -387,6 +388,22 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       document.removeEventListener('visibilitychange', vis)
     }
   }, [phase, mine, daily, free, home])
+
+  // итоги: планета с маршрутом медленно крутится за карточкой
+  useEffect(() => {
+    if (phase !== 'over' || !result) return
+    const ctx = canvas.current!.getContext('2d')!
+    const calm = reduced()
+    const t0 = performance.now()
+    let raf = 0
+    const frame = (now: number) => {
+      const v = view.current
+      drawGlobeResult(ctx, v.vw, v.vh, v.dpr, result, calm ? 0 : Math.sin(((now - t0) / 1000) * 0.3) * 35) // покачивается, маршрут не уходит из кадра
+      if (!calm) raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [phase, result])
 
   // игровой цикл
   useEffect(() => {
@@ -442,8 +459,6 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           localStorage.setItem(`airmail-ghost-${bag.daily}`, JSON.stringify(g.trail.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10])))
         } catch {}
       }
-      const v = view.current
-      drawResult(ctx, v.vw, v.vh, v.dpr, g)
       setResult({ ...g })
       setPhase('over')
     }
@@ -496,7 +511,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       f.rings = f.rings.filter((q) => q.life > 0)
       shake.current = calm ? 0 : Math.max(0, shake.current - k * 30)
       const ghost = g.done ? null : ghostAt(ghostTrail, g.t)
-      drawWorld(ctx, v, g, f, calm ? 0 : Math.max(shake.current, g.inStorm ? 5 : 0), p, ghost)
+      // старт — пикирование с орбиты: первые полторы секунды камера падает от целой планеты к самолётику
+      const orbit = calm ? 1 : 1 - (1 - Math.min(1, g.t / 1.5)) ** 3
+      planeAt.current = drawGlobeWorld(ctx, orbit < 1 ? { ...v, z: v.z * (0.2 + 0.8 * orbit) } : v, g, f, calm ? 0 : Math.max(shake.current, g.inStorm ? 5 : 0), p, ghost)
 
       if (!g.done && g.alt < LOW && now - beepAt > 180 + g.alt * 25) {
         beepAt = now
@@ -573,7 +590,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   const aimAt = (e: React.PointerEvent) => {
     const g = game.current
     if (!g || phase !== 'flying') return
-    const [px, py] = toScreen(view.current, g.x, g.y)
+    const { px, py } = planeAt.current
     input.current.aim = Math.atan2(e.clientY - py, e.clientX - px)
     if (e.pointerType === 'mouse') input.current.mouse = (e.buttons & 1) === 1
   }

@@ -89,7 +89,7 @@ function drawTrail(ctx: CanvasRenderingContext2D, pts: [number, number][], z: nu
   ctx.setLineDash([])
 }
 
-function drawPlane(
+export function drawPlane(
   ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, scale: number,
   style: 'shadow' | 'pilot' | 'stray' | 'ghost', pose: Pose = STILL, shadowAlpha = 0.2, model: PlaneModel = 'dart',
 ) {
@@ -126,7 +126,7 @@ function drawPlane(
 }
 
 // смятый бумажный шарик — то, что остаётся от самолётика
-function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+export function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
   ctx.save()
   ctx.translate(x, y)
   ctx.fillStyle = C.pink
@@ -175,7 +175,7 @@ function drawInk(ctx: CanvasRenderingContext2D, l: Letter, z: number) {
   ctx.restore()
 }
 
-function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, z: number, color: string, size = 11) {
+export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, z: number, color: string, size = 11) {
   ctx.font = `800 ${size / z}px Archivo, system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.lineWidth = 3 / z
@@ -187,8 +187,8 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
 }
 
 // ветер: серые штрихи текут по пассатам и западному переносу со скоростью ветра на этой широте
-const WIND_CELL = 30
-const hash = (x: number, y: number) => {
+export const WIND_CELL = 30
+export const hash = (x: number, y: number) => {
   const h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453
   return h - Math.floor(h)
 }
@@ -345,11 +345,11 @@ function drawHazards(ctx: CanvasRenderingContext2D, hs: Hazard[], v: View, t: nu
 }
 
 // ночь и туман: вуаль с окном видимости вокруг самолётика
-function drawVeil(ctx: CanvasRenderingContext2D, v: View, g: Game) {
+export function drawVeil(ctx: CanvasRenderingContext2D, v: View, g: Game, at?: [number, number]) {
   const kind = g.cond.veil
   if (!kind) return 0
   ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0)
-  const [px, py] = toScreen(v, g.x, g.y)
+  const [px, py] = at ?? toScreen(v, g.x, g.y)
   const r0 = Math.min(v.vw, v.vh) * (kind === 'night' ? 0.24 : 0.2)
   const grad = ctx.createRadialGradient(px, py, r0, px, py, r0 * 2.1)
   const rgb = kind === 'night' ? '14 17 38' : '245 243 235'
@@ -368,7 +368,7 @@ function drawVeil(ctx: CanvasRenderingContext2D, v: View, g: Game) {
   return r0
 }
 
-function drawClouds(ctx: CanvasRenderingContext2D, v: View, t: number) {
+export function drawClouds(ctx: CanvasRenderingContext2D, v: View, t: number) {
   ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0)
   const zc = v.z * PARALLAX
   for (const c of CLOUDS) {

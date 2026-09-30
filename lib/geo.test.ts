@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { at, FOG, inCountry } from './geo.ts'
+import { geoContains } from 'd3-geo'
+import { at, FOG, inCountry, isoOf, land } from './geo.ts'
 
 test('known country → finite centroid in the right hemisphere', () => {
   const [lon, lat] = at('BR')
@@ -34,4 +35,13 @@ test('spot inside its country only', () => {
   assert.ok(inCountry('RU', [37.6, 55.75])) // Москва
   assert.ok(!inCountry('RU', [2.35, 48.85])) // Париж
   assert.ok(!inCountry('XX', [37.6, 55.75]))
+})
+
+test('Crimea is neutral: land, but neither Russia nor Ukraine', () => {
+  const simferopol: [number, number] = [34.1, 44.95]
+  const here = land.filter((f) => geoContains(f, simferopol))
+  assert.equal(here.length, 1)
+  assert.equal(isoOf(here[0]), null)
+  assert.ok(!inCountry('RU', simferopol) && !inCountry('UA', simferopol))
+  assert.ok(inCountry('RU', [37.62, 55.75]) && inCountry('UA', [30.52, 50.45]))
 })

@@ -23,7 +23,21 @@ export const FOG: [number, number] = [-60, -62]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const topo = world as any
-export const land = (feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection).features
+const raw = (feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection).features
+
+// Natural Earth 4.1.0 рисует Крым по фактическому контролю — в составе России. Делаем его нейтральным:
+// отдельная суша без кода страны, как у прочих спорных территорий (не красится, не считается ничьей)
+const SIMFEROPOL: [number, number] = [34.1, 44.95]
+export const land: GeoJSON.Feature[] = raw.flatMap((f) => {
+  if (String(f.id) !== '643' || f.geometry.type !== 'MultiPolygon') return [f]
+  const polys = f.geometry.coordinates
+  const i = polys.findIndex((p) => geoContains({ type: 'Polygon', coordinates: p }, SIMFEROPOL))
+  if (i < 0) return [f]
+  return [
+    { ...f, geometry: { type: 'MultiPolygon', coordinates: polys.filter((_, j) => j !== i) } },
+    { type: 'Feature', id: 'crimea', properties: { name: 'Crimea' }, geometry: { type: 'Polygon', coordinates: polys[i] } },
+  ]
+})
 
 // ponytail: центроид мультиполигона (Франция с Гвианой уезжает к Атлантике) — для игрушки ок
 const centroids = new Map(land.map((f) => [String(f.id), geoCentroid(f)]))

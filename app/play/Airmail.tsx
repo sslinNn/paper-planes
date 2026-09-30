@@ -166,9 +166,9 @@ export default function Airmail() {
       g.alt = Math.max(g.alt, 45) // демо не падает
       if (g.done) g = fresh()
       follow(view.current, g, dt, calm)
-      // на телефоне карточка внизу — самолётик летает в верхней трети
+      // карточка по центру (на телефоне — внизу): самолётик летает сбоку от неё, а не под ней
       const v = view.current
-      drawWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : v, g, [], 0)
+      drawWorld(ctx, v.vw < 721 ? { ...v, cy: v.cy + (v.vh * 0.22) / v.z } : { ...v, cx: v.cx - (v.vw * 0.33) / v.z }, g, [], 0)
       if (!calm) raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)

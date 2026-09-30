@@ -132,8 +132,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     const loadMine = async (tries: number) => {
       const r = await fetch('/api/airmail')
       if (stop || !r.ok) return
+      const b = (await r.json()) as Bag & { authed?: false }
+      if (stop || b.authed === false) return
       setAuthed(true)
-      const b = (await r.json()) as Bag
       setMine(b)
       if (b.letters.length) setMode('mine')
       else if (b.collecting && tries < 15) timer = setTimeout(() => loadMine(tries + 1).catch(() => {}), 3000)

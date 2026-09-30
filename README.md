@@ -2,14 +2,27 @@
 
 **Every reply on X is a paper plane.** Log in with X (read-only, we never post) and every reply you write takes off from your country and flies across a live world map to the country of the person you replied to. No bot and no prompt: you keep talking on X as usual, and the map draws it.
 
-**AIRMAIL** (`/play`) turns your replies into a game. Every reply you've sent is a letter; fly it there before your paper plane hits the ground.
+**[AIRMAIL](https://paper-planes-three.vercel.app/play)** turns those replies into a flight game. Every reply you've sent is a letter, and you fly it to the person you wrote to before your paper plane hits the ground.
 
-- **Your real replies are the levels.** Guests fly strangers' letters from the public sky. Log in and your mailbag holds your own replies, addressed to real people.
-- **Real atmosphere.** Trade winds blow west, the westerlies blow east. Moscow → New York is faster if you drop south and take the Columbus route.
-- **Jev reads every reply once.** [TypeSafe](https://typesafe.ai)'s System One model folds each reply into a letter: 💌 warm ones glide long, 🔥 hot takes fly fast and burn, 😂 jokes ride the wind, ❓ questions lift you double on delivery. Only the label is stored, never the text.
-- **The weather is made of what people are saying.** Storms form over countries where X is arguing. Pink thermals rise where people are kind.
-- **Your shadow is your altitude.** No numbers on screen: the higher you fly, the further your shadow falls.
-- **Stamps land in your passport** (`/me`), each with a greeting in the local language. When you share a run on X, it tags up to three of the people whose mail you delivered.
+## Why it's different
+
+- **The levels are real conversations.** Log in and your mailbag holds your own replies, addressed to real people in real countries. Everyone else flies **Today's Mail #N**: the same sky for everyone that day, like Wordle, with a ghost of your best run.
+- **An AI reads each reply once and folds it into a letter.** [TypeSafe](https://typesafe.ai)'s Jev, a System One model that returns typed judgments rather than text, labels every reply. 💌 warm letters glide long, 🔥 hot takes fly fast and burn, 😂 jokes ride the wind, ❓ questions lift double. Only the label is stored, never the text.
+- **The weather is made of what people are saying.** Storms form over countries where X is arguing ("🔥 3 hot takes · US"). Pink thermals rise where people are kind.
+- **The physics is real.** Trade winds blow west and the westerlies blow east, drawn as streaks with a tailwind/headwind gauge. Your altitude is your shadow, and diving trades height for speed.
+- **Every run ends as a postcard.** Sharing makes a route image: your flight in airmail stripes over a riso map, a stamp on every country, and the score. It tags up to three of the people whose mail you delivered. Stamps also land in your passport on `/me`.
+
+## Game feel, on purpose
+
+Based on first-hand sources (notes in `docs/research/`):
+
+- A hit-stop "sleep" and a bass thump on every stamp (Nijman, *The Art of Screenshake*).
+- The plane banks, stretches and bounces in the same frame as your input (Swink, *Game Feel*).
+- It crashes in a spin and crumples into a paper ball.
+- Ink stamps stay on the map where each letter landed.
+- You learn by flying, with in-flight hints instead of a rules screen.
+
+All sound is synthesized with WebAudio. There are no asset files.
 
 Also in the box: a pilot card per handle (`/p/@handle`), an air-traffic board of the busiest routes (`/traffic`), and a passport that fills with country stamps as your planes land.
 
@@ -17,7 +30,8 @@ Also in the box: a pilot card per handle (`/p/@handle`), an air-traffic board of
 
 - **Next.js 16** (App Router) on Vercel, **Neon Postgres**, **Better Auth** (X OAuth 2.0, read-only scopes).
 - Map: **d3-geo** + world-atlas, a Miller projection with the seam in the Bering Strait. The main map is SVG. The game draws on **Canvas 2D** from the same projected country outlines, in a world that wraps around.
-- Game core is pure TypeScript (`lib/airmail.ts`): winds by latitude, altitude, thermals, storms and delivery by point-in-country. It is tested with `node --test`. The balance was tuned with an autopilot simulation.
+- Game core is pure TypeScript (`lib/airmail.ts`): winds by latitude, altitude, dive, thermals, storms, strays (other real replies flying their real great-circle routes), combos, and delivery into the recipient's drop circle. It is tested with `node --test`. The balance was tuned with an autopilot simulation.
+- Today's Mail (`lib/postcard.ts`): a seeded RNG keyed to the New York date gives everyone the same letters, storms and strays. The share is a Wordle-style flag line, and `/play/r/[code]` renders the route postcard as the Open Graph image (satori + d3-geo).
 - **All sound is synthesized** with WebAudio (rubber-stamp thud, paper rustle, wind). No audio files.
 - Jev (`lib/jev.ts`): one Choice question per reply, batched 20 per request. The collector labels new replies and back-fills old ones with owned reads, so no extra X API spend per player.
 - `prefers-reduced-motion` is respected: no shake, no confetti, no camera lead.

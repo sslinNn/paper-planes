@@ -130,7 +130,7 @@ function VisaPage({ stamps, n, patronSince, title = 'Visas', airmail }: { stamps
         {patronSince && <li key="patron"><PatronStamp since={patronSince} /></li>}
         {stamps.map((s) => <li key={s.country}><PassportStamp stamp={s} airmail={airmail} /></li>)}
       </ul>
-      {!stamps.length && <p className="blank">Empty page. Reply to someone abroad on X and your next plane stamps it.</p>}
+      {!stamps.length && <p className="blank">{airmail ? 'Empty page. Deliver more letters in Airmail to fill it.' : 'Empty page. Reply to someone abroad on X and your next plane stamps it.'}</p>}
     </div>
   )
 }
@@ -169,7 +169,10 @@ export default function Passport(props: Props) {
   const air = props.airmail ?? []
   for (let i = 0; i < air.length; i += PER_PAGE)
     pages.push(<VisaPage key={`am${i}`} stamps={air.slice(i, i + PER_PAGE)} n={i / PER_PAGE + 1} title="Airmail" airmail />)
-  if (pages.length % 2) pages.push(<VisaPage key="blank" stamps={[]} n={visas.length + 1} />)
+  if (pages.length % 2)
+    pages.push(air.length
+      ? <VisaPage key="blank" stamps={[]} n={Math.ceil(air.length / PER_PAGE) + 1} title="Airmail" airmail />
+      : <VisaPage key="blank" stamps={[]} n={visas.length + 1} />)
 
   const [single, setSingle] = useState(false)
   const [at, setAt] = useState(0) // разворот (или страница на телефоне)

@@ -100,6 +100,9 @@ function ghostAt(trail: [number, number][] | null, t: number): Ghost {
   return { x: x0 + dx * f, y: y0 + (y1 - y0) * f, heading: Math.atan2(y1 - y0, dx || 1e-6) }
 }
 
+// запрос с таймаутом: задумалась база — через 12 с игрок видит «Try again», а не вечное «Sorting the mailbag…»
+const get = (url: string) => fetch(url, { signal: AbortSignal.timeout(12000) })
+
 const logIn = () => {
   track('login_clicked', { from: 'airmail' })
   authClient.signIn.social({ provider: 'twitter', callbackURL: '/play' })
@@ -152,13 +155,19 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     xpRef.current = xp
   }, [xp])
   const bag = mode === 'mine' ? mine : mode === 'free' ? free : daily
+  // фаза для асинхронных колбэков: личный мешок, догрузившийся посреди полёта, не должен подменять режим
+  const phaseRef = useRef(phase)
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
+  const [failed, setFailed] = useState(false)
 
   // мешок дня для всех; личный — если вошёл. Вошёл прямо из игры — ждём, пока соберутся реплаи
   useEffect(() => {
     let stop = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const loadMine = async (tries: number) => {
-      const r = await fetch('/api/airmail')
+      const r = await get('/api/airmail')
       if (stop || !r.ok) return
       const b = (await r.json()) as Bag & { authed?: false }
       if (stop || b.authed === false) return
@@ -167,21 +176,37 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       // модель — только открытая серверным рангом (локальный выбор гостя мог быть другим)
       setPlane(isPlaneModel(b.plane) && unlocked(b.xp ?? 0, b.plane) ? b.plane : 'dart')
       setMine(b)
-      if (b.letters.length) setMode('mine')
+      if (b.letters.length && phaseRef.current !== 'flying' && phaseRef.current !== 'over') setMode('mine')
       else if (b.collecting && tries < 15) timer = setTimeout(() => loadMine(tries + 1).catch(() => {}), 3000)
     }
     const loadDaily = async () => {
-      const b = (await (await fetch('/api/airmail/guest')).json()) as Bag
+      const r = await get('/api/airmail/guest')
+      if (!r.ok) throw new Error(`guest ${r.status}`)
+      const b = (await r.json()) as Bag
       if (stop) return
       setDaily(b)
       if (b.daily) setDayBest(readNum(`airmail-daily-${b.daily}`))
     }
     // intro открывается, как только пришёл мешок дня; личный подтянется следом и сменит кнопку
     const ready = () => !stop && setPhase((p) => (p === 'loading' ? 'intro' : p))
-    loadDaily().then(ready, ready)
-    fetch('/api/airmail/free').then((r) => r.json()).then((b: Bag) => !stop && setFree(b)).catch(() => {})
+    // intro открывается с первым пришедшим мешком (дня или свободным); ошибка — только если не пришёл ни один
+    let misses = 0
+    const miss = () => {
+      if (++misses < 2 || stop) return
+      setFailed(true)
+      ready()
+    }
+    loadDaily().then(ready, miss)
+    get('/api/airmail/free')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((b: Bag) => {
+        if (stop) return
+        setFree(b)
+        ready()
+      })
+      .catch(miss)
     loadMine(0).catch(() => {})
-    fetch('/api/airmail/board').then((r) => r.json()).then((b: { rows: BoardRow[] }) => !stop && setBoard(b.rows)).catch(() => {})
+    get('/api/airmail/board').then((r) => r.json()).then((b: { rows: BoardRow[] }) => !stop && setBoard(b.rows)).catch(() => {})
     return () => {
       stop = true
       clearTimeout(timer)
@@ -590,9 +615,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
               <span className="combo" style={{ '--left': hud.comboLeft } as React.CSSProperties}>×{hud.combo} express</span>
             )}
           </div>
-          <WindChip w={hud.wind} />
-          {cond.id !== 'fair' && <p className="am-cond" key={cond.id}><b>{cond.name}</b> · {cond.blurb}</p>}
-          {hud.mission && <p className="am-mission">🎯 {hud.mission}</p>}
+          {/* колонка плашек: ветер, погода, задание — раскладка сама, перенос строки ничего не ломает */}
+          <div className="am-chips">
+            <WindChip w={hud.wind} />
+            {cond.id !== 'fair' && <p className="am-cond" key={cond.id}><b>{cond.name}</b> · {cond.blurb}</p>}
+            {hud.mission && <p className="am-mission">🎯 {hud.mission}</p>}
+          </div>
           <div className="am-alt" role="meter" aria-label="Altitude" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hud.alt)}>
             <span style={{ transform: `scaleY(${hud.alt / 100})` }} />
           </div>
@@ -625,11 +653,14 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       )}
 
       {phase !== 'loading' && (
-        <button type="button" className="am-mute" aria-pressed={mute} onClick={() => {
+        <button type="button" className="am-mute" aria-label={mute ? 'Turn sound on' : 'Turn sound off'} aria-pressed={!mute} onClick={() => {
           setMuted(!mute)
           setMute(!mute)
         }}>
-          {mute ? 'Sound off' : 'Sound on'}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9h4l5-4v14l-5-4H4z" />
+            {mute ? <path d="M16 9l5 6M21 9l-5 6" /> : <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />}
+          </svg>
         </button>
       )}
 
@@ -647,11 +678,15 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           <div className="am-actions">
             {ownReady ? (
               <button type="button" className="tag am-go" onClick={() => start('mine')}>Fly your mail</button>
-            ) : (
-              <button type="button" className="tag am-go" onClick={() => start('free')} disabled={!free?.letters.length}>Fly free</button>
-            )}
+            ) : free?.letters.length ? (
+              <button type="button" className="tag am-go" onClick={() => start('free')}>Fly free</button>
+            ) : daily?.letters.length ? (
+              <button type="button" className="tag am-go" onClick={() => start('daily')}>Fly {dayLabel}</button>
+            ) : null}
             {ownReady && !!free?.letters.length && <button type="button" className="tag outline" onClick={() => start('free')}>Free flight</button>}
-            {!!daily?.letters.length && <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel} · board</button>}
+            {(ownReady || !!free?.letters.length) && !!daily?.letters.length && (
+              <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel} · board</button>
+            )}
           </div>
           {!authed && (
             <p className="am-login">
@@ -661,7 +696,13 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           )}
           {authed && !ownReady && mine?.collecting && <p className="fine am-wait">Reading your replies on X… your mailbag lands in a few seconds.</p>}
           {authed && !ownReady && !mine?.collecting && <p className="fine">No replies of yours in the sky yet. Reply to someone on X, then come back. Meanwhile, fly today’s mail.</p>}
-          {daily && !daily.letters.length && !ownReady && <p className="fine">No letters in the sky yet. Come back when the planes are flying.</p>}
+          {daily && !daily.letters.length && !ownReady && !free?.letters.length && <p className="fine">No letters in the sky yet. Come back when the planes are flying.</p>}
+          {failed && !free?.letters.length && !daily?.letters.length && !ownReady && (
+            <p className="am-login">
+              <span className="fine">Couldn’t reach the mailbag.</span>
+              <button type="button" className="tag outline" onClick={() => location.reload()}>Try again</button>
+            </p>
+          )}
           <Hangar xp={xp} plane={plane} onPlane={choosePlane} compact />
           {!!board.length && <p className="fine am-leader">Today’s leader: <b>@{board[0].handle}</b> · {fmt(board[0].score)}</p>}
           {!!dayBest && <p className="fine">Your best today: {fmt(dayBest)} · your ghost flies with you</p>}
@@ -698,7 +739,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
               <p className="am-promo">Promoted: <b>{promoted.name}</b> · {NAMES[promoted.plane]} unlocked</p>
             )}
             <p className="fine">{rankOf(xp).name} · {xp} {xp === 1 ? 'letter' : 'letters'} delivered{boardPlace && bag.daily ? <> · <b>#{boardPlace} today</b></> : null}</p>
-            {line && <p className="am-jev">Jev read {bag.daily ? 'this' : 'your'} mailbag: {line}</p>}
+            {line && <p className="am-jev">Jev read {mode === 'mine' ? 'your' : 'this'} mailbag: {line}</p>}
             {bag.daily && !!board.length && (
               <ol className="am-board" aria-label={`${dayLabel} leaderboard`}>
                 {board.slice(0, 5).map((r, i) => (

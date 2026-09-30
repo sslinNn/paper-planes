@@ -578,3 +578,9 @@ html { scrollbar-color: var(--blue) var(--paper); }
   .low .am-alt { animation: none; border-color: var(--pink); }
   @keyframes am-fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
 }
+.am-wind { position: absolute; top: 76px; left: 16px; margin: 0; display: flex; align-items: center; gap: 6px; padding: 6px 9px; pointer-events: none;
+  background: var(--paper); border: 1.5px solid var(--soot); font: 800 .85rem/1 var(--font-text); text-transform: uppercase; letter-spacing: .06em; }
+.am-wind svg { width: 20px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.am-wind.tail { color: var(--blue); }
+.am-wind.head { color: var(--soot); background: var(--pink); }
+@media (min-width: 721px) { .am-wind { top: 88px; } }

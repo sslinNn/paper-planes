@@ -45,6 +45,7 @@ export const STORM_LIFE = 40
 export const DIVE = { speed: 1.8, sink: 3 } // пике: высота в обмен на скорость
 export const COMBO_WINDOW = 10 // секунд между доставками, чтобы серия не прервалась
 export const COMBO_MAX = 5 // множитель серии не растёт выше — иначе счёт решает кучность писем, а не полёт
+export const DELIVER_R = 9 // письмо ложится, только когда самолётик у метки адресата, а не на границе страны
 export const CATCH_R = 9
 export const CATCH_LIFT = 12
 export const CATCH_POINTS = 50
@@ -117,6 +118,15 @@ function nearest(g: Game): number | null {
 }
 
 export const active = (g: Game) => g.letters.find((l) => l.id === g.target) ?? null
+
+// у адресата: в круге сброса вокруг его метки
+export const reached = (g: Game, l: Letter) => {
+  const [tx, ty] = targetPoint(l)
+  return dist(g.x, g.y, tx, ty) < DELIVER_R
+}
+
+// ветер вдоль курса в долях собственной скорости: + попутный, − встречный (письмо-шутка ловит ветер сильнее)
+export const headwind = (g: Game) => wind(lonlat(g.x, g.y)[1]) * modOf(active(g)?.kind).wind * Math.cos(g.heading) / modOf(active(g)?.kind).speed
 export function select(g: Game, id: number) {
   if (g.letters.some((l) => l.id === id)) g.target = id
 }
@@ -280,7 +290,7 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
 
   // доставка: очки за длину плеча и «жар» письма, серия быстрых доставок умножает
   const letter = active(g)
-  if (letter && !local(g, letter) && delivered(here, letter.to_country)) {
+  if (letter && !local(g, letter) && reached(g, letter)) {
     g.combo = g.t - g.lastDelivery < COMBO_WINDOW ? g.combo + 1 : 1
     g.lastDelivery = g.t
     const points = Math.round((100 + g.leg / 10) * m.score * Math.min(g.combo, COMBO_MAX))

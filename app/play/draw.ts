@@ -1,6 +1,6 @@
-import { H, land, path, W } from '@/lib/geo'
+import { H, land, path, projection, W } from '@/lib/geo'
 import { countryName } from '@/lib/country'
-import { active, targetPoint, THERMAL_CHARGE, STORM_LIFE, type Game, type Letter } from '@/lib/airmail'
+import { active, DELIVER_R, SPEED, targetPoint, THERMAL_CHARGE, STORM_LIFE, wind, type Game, type Letter } from '@/lib/airmail'
 import { AIRFRAMES } from '@/lib/airframes'
 
 export const C = { paper: '#f5f3eb', blue: '#0078bf', pink: '#ff48b0', soot: '#1d1d1b' }
@@ -110,6 +110,39 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
   ctx.fillText(text, x, y)
 }
 
+// ветер: серые штрихи текут по пассатам и западному переносу со скоростью ветра на этой широте
+const WIND_CELL = 30
+const hash = (x: number, y: number) => {
+  const h = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453
+  return h - Math.floor(h)
+}
+function drawWind(ctx: CanvasRenderingContext2D, v: View, t: number) {
+  const hw = v.vw / 2 / v.z, hh = v.vh / 2 / v.z
+  const x0 = Math.floor((v.cx - hw) / WIND_CELL) * WIND_CELL
+  const y0 = Math.max(0, Math.floor((v.cy - hh) / WIND_CELL) * WIND_CELL)
+  ctx.lineWidth = 1.4 / v.z
+  ctx.lineCap = 'round'
+  for (let y = y0; y <= Math.min(H, v.cy + hh); y += WIND_CELL) {
+    const w = wind((projection.invert!([W / 2, y]) as [number, number])[1])
+    const dir = Math.sign(w) || 1
+    const len = 5 + Math.abs(w) * 16
+    for (let x = x0; x <= v.cx + hw; x += WIND_CELL) {
+      const j = hash(((x % W) + W) % W, y)
+      const phase = (t * (Math.abs(w) * SPEED * 0.8) / WIND_CELL + j) % 1
+      const px = x + (dir > 0 ? phase : 1 - phase) * WIND_CELL
+      const py = y + (j - 0.5) * WIND_CELL * 0.7
+      ctx.strokeStyle = `rgb(29 29 27 / ${(Math.sin(phase * Math.PI) * 0.55).toFixed(3)})`
+      ctx.beginPath()
+      ctx.moveTo(px, py)
+      ctx.lineTo(px - dir * len, py)
+      // острие по направлению ветра
+      ctx.moveTo(px, py)
+      ctx.lineTo(px - dir * 2.2, py - 1.4)
+      ctx.stroke()
+    }
+  }
+}
+
 function drawLetters(ctx: CanvasRenderingContext2D, letters: Letter[], target: number | null, z: number, t: number) {
   // несколько писем в одну страну — одна метка, подписи стопкой
   const seen = new Map<string, number>()
@@ -122,7 +155,17 @@ function drawLetters(ctx: CanvasRenderingContext2D, letters: Letter[], target: n
     const w = 14 / z, h = 9.5 / z
     if (!n) {
       if (on) {
+        // круг сброса: письмо ложится, только когда самолётик внутри
+        ctx.fillStyle = 'rgb(255 72 176 / .12)'
         ctx.strokeStyle = C.pink
+        ctx.lineWidth = 1.5 / z
+        ctx.setLineDash([3 / z, 3 / z])
+        ctx.lineDashOffset = -t * 6 / z
+        ctx.beginPath()
+        ctx.arc(x, y, DELIVER_R, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+        ctx.setLineDash([])
         ctx.lineWidth = 2.5 / z
         for (const k of [0, 0.5]) {
           const p = (t * 0.8 + k) % 1
@@ -235,6 +278,7 @@ export function drawWorld(
       if (s.hot && a > 0.3)
         label(ctx, `🔥 ${s.hot} hot ${s.hot === 1 ? 'take' : 'takes'} · ${s.iso ? countryName(s.iso) : ''}`, s.x, s.y - s.r * 0.8, v.z, C.soot, 10)
     }
+    if (!off) drawWind(ctx, v, g.t)
     drawTrail(ctx, g.trail.concat([[g.x, g.y]]), v.z)
     drawLetters(ctx, g.letters, g.target, v.z, g.t)
     for (const s of g.strays) {

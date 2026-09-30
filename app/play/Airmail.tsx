@@ -5,7 +5,7 @@ import { at, projection, W } from '@/lib/geo'
 import { countryName } from '@/lib/country'
 import { EMOJI, LABEL, type Kind } from '@/lib/letters'
 import {
-  active, COMBO_WINDOW, countryAt, newGame, select, shareText, step, tallyLine, targetPoint,
+  active, COMBO_WINDOW, countryAt, headwind, newGame, select, shareText, step, tallyLine, targetPoint,
   type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
 } from '@/lib/airmail'
 import { track } from '@/lib/track'
@@ -41,8 +41,9 @@ const LOW = 25
 const HINTS: [number, number, (touch: boolean) => string][] = [
   [0.5, 4.5, (t) => (t ? 'Touch where you want to fly' : 'Point where you want to fly')],
   [5, 10, (t) => (t ? 'Hold DIVE: faster, but you sink' : 'Hold SPACE or the mouse button to dive: faster, but you sink')],
-  [11, 16, () => 'Fly through blue planes to catch strangers’ letters'],
-  [17, 22, () => 'Pink rings lift you · storms push you down'],
+  [11, 16, () => 'Grey streaks are the wind: ride tailwinds, dodge headwinds'],
+  [17, 22, () => 'Fly through blue planes to catch strangers’ letters'],
+  [23, 28, () => 'Pink rings lift you · storms push you down'],
 ]
 
 // камера с упреждением по курсу; на шве карты прыгает вместе с самолётиком
@@ -78,6 +79,20 @@ function writeNum(key: string, n: number) {
   } catch {}
 }
 
+// ветер вдоль курса: попутный подгоняет, встречный тормозит — стрелка и процент от своей скорости
+function WindChip({ w }: { w: number }) {
+  if (Math.abs(w) < 0.08) return null
+  const tail = w > 0
+  return (
+    <p className={`am-wind ${tail ? 'tail' : 'head'}`}>
+      <svg viewBox="0 0 20 12" aria-hidden="true" style={{ rotate: tail ? '0deg' : '180deg' }}>
+        <path d="M1 6 H15 M11 2 L16 6 L11 10" />
+      </svg>
+      {tail ? 'Tailwind' : 'Headwind'} {tail ? '+' : '−'}{Math.round(Math.abs(w) * 100)}%
+    </p>
+  )
+}
+
 export default function Airmail() {
   const canvas = useRef<HTMLCanvasElement>(null)
   const game = useRef<Game | null>(null)
@@ -89,7 +104,7 @@ export default function Airmail() {
   const onEvents = useRef<(ev: GameEvent[], g: Game) => void>(() => {})
   const [phase, setPhase] = useState<Phase>('loading')
   const [bag, setBag] = useState<Bag | null>(null)
-  const [hud, setHud] = useState({ alt: 100, letters: [] as Letter[], target: null as number | null, over: '', score: 0, combo: 0, comboLeft: 0, hint: '' })
+  const [hud, setHud] = useState({ alt: 100, letters: [] as Letter[], target: null as number | null, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: 0 })
   const [stampOn, setStampOn] = useState<Stamped | null>(null)
   const [result, setResult] = useState<Game | null>(null)
   // localStorage читается лениво: на сервере фаза loading, эти значения в разметку ещё не попадают
@@ -114,7 +129,7 @@ export default function Airmail() {
     floaters.current = []
     input.current.aim = null
     view.current = { ...view.current, cx: g.x, cy: g.y }
-    setHud({ alt: 100, letters: g.letters, target: g.target, over: '', score: 0, combo: 0, comboLeft: 0, hint: '' })
+    setHud({ alt: 100, letters: g.letters, target: g.target, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: headwind(g) })
     setResult(null)
     setPhase('flying')
     track('airmail_start', { guest: bag.guest, letters: bag.letters.length })
@@ -268,7 +283,7 @@ export default function Airmail() {
         hudAt = now
         const hint = tutorial ? (HINTS.find(([a, b]) => g.t >= a && g.t < b)?.[2](touch) ?? '') : ''
         const comboLeft = g.combo ? Math.max(0, 1 - (g.t - g.lastDelivery) / COMBO_WINDOW) : 0
-        setHud((h) => ({ ...h, alt: g.alt, letters: g.letters, target: g.target, score: g.score, combo: g.combo, comboLeft, hint }))
+        setHud((h) => ({ ...h, alt: g.alt, letters: g.letters, target: g.target, score: g.score, combo: g.combo, comboLeft, hint, wind: headwind(g) }))
       }
       if (g.done) {
         silence()
@@ -366,6 +381,7 @@ export default function Airmail() {
               <span className="combo" style={{ '--left': hud.comboLeft } as React.CSSProperties}>×{hud.combo} express</span>
             )}
           </div>
+          <WindChip w={hud.wind} />
           <div className="am-alt" role="meter" aria-label="Altitude" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hud.alt)}>
             <span style={{ transform: `scaleY(${hud.alt / 100})` }} />
           </div>
@@ -414,7 +430,8 @@ export default function Airmail() {
           <p className="lede">Every reply you’ve sent on X is a letter. <strong>Fly it there</strong> before your paper plane hits the ground.</p>
           <ul className="am-rules">
             <li><strong>Steer</strong> with your finger, mouse or ← →. <strong>Hold {touch ? 'DIVE' : 'SPACE'}</strong> to trade height for speed.</li>
-            <li>Deliver fast to chain <strong>express combos</strong>. Catch strangers’ planes on the way.</li>
+            <li>A letter lands when you fly into the <span className="pink">pink circle</span> around its recipient. Deliver fast to chain <strong>express combos</strong>.</li>
+            <li>Grey streaks are the <strong>wind</strong>: trade winds blow west, westerlies blow east. Headwinds slow you down.</li>
             <li><span className="pink">Pink thermals</span> lift you where people are kind. Storms gather where X argues.</li>
             <li>Jev read every reply: 💌 glides long · 🔥 flies fast and burns · 😂 rides the wind · ❓ lifts double.</li>
           </ul>

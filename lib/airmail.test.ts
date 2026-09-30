@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { countryAt, delivered, newGame, select, shareText, step, tally, wind, wrapDx, type Letter } from './airmail.ts'
+import { countryAt, delivered, headwind, newGame, select, shareText, step, tally, targetPoint, wind, wrapDx, type Game, type Letter } from './airmail.ts'
 import { at, projection, W } from './geo.ts'
 
 const L = (id: number, to_country: string | null, kind: Letter['kind'] = null, to_handle = `u${id}`): Letter =>
@@ -8,6 +8,10 @@ const L = (id: number, to_country: string | null, kind: Letter['kind'] = null, t
 const still = { aim: null, turn: 0, dive: false }
 const circle = { aim: null, turn: 1, dive: false } // кружит на месте — не долетит до цели
 const rand = () => 0.5
+// поставить самолётик прямо на метку адресата
+const onTarget = (g: Game, l: Letter) => {
+  ;[g.x, g.y] = targetPoint(l)
+}
 
 test('wind: trade winds west, westerlies east, polar west', () => {
   assert.ok(wind(10) < 0)
@@ -61,8 +65,7 @@ test('warm letters sink slower than hot ones', () => {
 test('delivery lifts, removes the letter, retargets; question lifts double', () => {
   const g = newGame([L(1, 'DE', 'question'), L(2, 'JP')], [], [2.35, 48.85]) // старт в Париже
   select(g, 1)
-  g.x = projection([10.4, 51.1])![0]
-  g.y = projection([10.4, 51.1])![1]
+  onTarget(g, g.letters[0])
   g.left = true
   g.alt = 10
   const ev = step(g, still, 0.01, rand)
@@ -80,6 +83,7 @@ test('altitude 0 crashes; last letter empties the bag', () => {
   assert.equal(g.done, true)
   const h = newGame([L(1, 'DE')], [], [10.4, 51.1])
   h.left = true
+  onTarget(h, h.letters[0])
   assert.deepEqual(step(h, still, 0.01, rand).map((e) => e.type), ['delivered', 'emptied'])
 })
 
@@ -128,8 +132,10 @@ test('no free delivery at home: letters to the start country wait until you have
   const g = newGame([L(1, 'DE'), L(2, 'FR')], [], [10.4, 51.1])
   assert.equal(g.target, 2, 'aims abroad first')
   select(g, 1)
+  onTarget(g, g.letters[0])
   assert.equal(step(g, still, 0.01, rand).length, 0, 'no delivery while still at home')
   g.left = true
+  onTarget(g, g.letters[0])
   assert.equal(step(g, still, 0.01, rand)[0]?.type, 'delivered')
 })
 
@@ -148,8 +154,10 @@ test('score: longer legs and hotter letters pay more; quick chains multiply', ()
   const g = newGame([L(1, 'DE', 'hot'), L(2, 'DE'), L(3, 'JP')], [], [10.4, 51.1])
   g.left = true
   select(g, 1)
+  onTarget(g, g.letters[0])
   const [a] = step(g, still, 0.01, rand)
   select(g, 2)
+  onTarget(g, g.letters[0])
   const [b] = step(g, still, 0.01, rand)
   assert.equal(a.type, 'delivered')
   assert.equal(b.type, 'delivered')
@@ -173,4 +181,24 @@ test('strays: real planes cross your path; flying through one catches it', () =>
   assert.ok(ev.some((e) => e.type === 'caught'))
   assert.ok(g.alt > 50)
   assert.equal(g.strays.length, 0)
+})
+
+test('crossing the border is not enough: the letter lands only at the recipient', () => {
+  const g = newGame([L(1, 'RU'), L(2, 'JP')], [], [2.35, 48.85])
+  select(g, 1)
+  g.left = true
+  ;[g.x, g.y] = projection([37.6, 55.7])! // Москва: в России, но далеко от метки адресата
+  assert.equal(step(g, still, 0.01, rand).length, 0)
+  onTarget(g, g.letters[0])
+  assert.equal(step(g, still, 0.01, rand)[0]?.type, 'delivered')
+})
+
+test('headwind: flying west in the westerlies is a headwind, east is a tailwind', () => {
+  const g = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  g.heading = Math.PI
+  assert.ok(headwind(g) < -0.3)
+  g.heading = 0
+  assert.ok(headwind(g) > 0.3)
+  g.heading = Math.PI / 2
+  assert.ok(Math.abs(headwind(g)) < 0.05)
 })

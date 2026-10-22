@@ -37,7 +37,7 @@ export default async function TrafficPage() {
       </p>
 
       {b.landingOfDay && (
-        <Link className="landing" href={`/?country=${b.landingOfDay.iso}`}>
+        <Link className="landing" href={`/sky?country=${b.landingOfDay.iso}`}>
           <span className="landing-label">Landing of the day</span>
           <span className="landing-place">{flag(b.landingOfDay.iso)} {placeName(b.landingOfDay.iso)}</span>
           <span className="landing-count">{plural(b.landingOfDay.count, 'plane')} landed in the last 24 hours</span>
@@ -51,7 +51,7 @@ export default async function TrafficPage() {
             const [from, to] = route(r.key)
             return (
               <li key={r.key}>
-                <Link href={`/?country=${from}`}>
+                <Link href={`/sky?country=${from}`}>
                   <span className="board-route">{flag(from)} {placeName(from)} <Arrow /> {flag(to)} {placeName(to)}</span>
                   <b>{r.count}</b>
                   <span className="board-note">{plural(r.pilots, 'pilot')}</span>
@@ -68,7 +68,7 @@ export default async function TrafficPage() {
       <ol className="board">
         {b.skies.map((s) => (
           <li key={s.iso}>
-            <Link href={`/?country=${s.iso}`}>
+            <Link href={`/sky?country=${s.iso}`}>
               <span className="board-route">{flag(s.iso)} {placeName(s.iso)}</span>
               <b>{s.total}</b>
               <span className="board-note">{s.out} out · {s.in} in</span>
@@ -92,8 +92,8 @@ export default async function TrafficPage() {
 
       <p className="lede traffic-actions">
         <a className="tag" href={share} target="_blank" rel="noopener"><XMark /> Share the board</a>
-        <Link className="tag" href="/">Watch them fly <Arrow /></Link>
-        <Link className="tag outline" href="/play">Fly them yourself: Airmail <Arrow /></Link>
+        <Link className="tag" href="/sky">Watch them fly <Arrow /></Link>
+        <Link className="tag outline" href="/">Fly them yourself: Airmail <Arrow /></Link>
       </p>
     </main>
   )

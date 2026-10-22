@@ -12,10 +12,10 @@ import { dailyShare, dayNumber, flag, rng, routeCode, type Route } from '@/lib/p
 import { rankOf, unlocked, type Rank } from '@/lib/ranks'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import Hangar, { NAMES } from '../me/Hangar'
-import { authClient } from '@/lib/auth-client'
 import { track } from '@/lib/track'
 import { PassportStamp, RubberFilter } from '../me/Passport'
 import { XMark } from '../icons'
+import { LoginNote, logInWithX } from '../LoginButton'
 import { C, STILL, zoomFor, type Fx, type Ghost, type Pose, type View } from './draw'
 import { drawGlobeResult, drawGlobeWorld } from './globe-world'
 import { inkOf } from '@/lib/wars'
@@ -106,10 +106,7 @@ function ghostAt(trail: [number, number][] | null, t: number): Ghost {
 // запрос с таймаутом: задумалась база — через 12 с игрок видит «Try again», а не вечное «Sorting the mailbag…»
 const get = (url: string) => fetch(url, { signal: AbortSignal.timeout(12000) })
 
-const logIn = () => {
-  track('login_clicked', { from: 'airmail' })
-  authClient.signIn.social({ provider: 'twitter', callbackURL: '/play' })
-}
+const logIn = () => logInWithX('airmail', '/')
 
 // опыт гостя живёт в браузере; у залогиненного — на сервере (сумма забегов)
 const localXp = () => readNum('airmail-xp')
@@ -133,7 +130,8 @@ const localPlane = (): PlaneModel => {
   }
 }
 
-export default function Airmail({ challenge }: { challenge?: Route } = {}) {
+// start — мешки дня и свободного полёта, вшитые сервером в HTML (app/play/bags.ts): intro открывается без запросов
+export default function Airmail({ challenge, start: initial = null }: { challenge?: Route; start?: { daily: Bag; free: Bag } | null } = {}) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const game = useRef<Game | null>(null)
   const input = useRef({ aim: null as number | null, keys: new Set<string>(), mouse: false, button: false })
@@ -180,6 +178,18 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
+  // сколько человек ждал первый экран: от начала загрузки страницы (и от монтирования — при переходе внутри сайта) до intro
+  const mountedAt = useRef(0)
+  useEffect(() => {
+    mountedAt.current = performance.now()
+  }, [])
+  const readySent = useRef(false)
+  useEffect(() => {
+    if (phase !== 'intro' || readySent.current) return
+    readySent.current = true
+    const now = performance.now()
+    track('airmail_ready', { ms: Math.round(now), mount_ms: Math.round(now - mountedAt.current), prerendered: !!initial })
+  }, [phase, initial])
   const [failed, setFailed] = useState(false)
 
   // Mail Wars: чьи флаги где стоят и событие часа (письма в эту страну ×3)
@@ -219,9 +229,12 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       else if (b.collecting && tries < 15) timer = setTimeout(() => loadMine(tries + 1).catch(() => {}), 3000)
     }
     const loadDaily = async () => {
-      const r = await get('/api/airmail/guest')
-      if (!r.ok) throw new Error(`guest ${r.status}`)
-      const b = (await r.json()) as Bag
+      let b = initial?.daily
+      if (!b) {
+        const r = await get('/api/airmail/guest')
+        if (!r.ok) throw new Error(`guest ${r.status}`)
+        b = (await r.json()) as Bag
+      }
       if (stop) return
       setDaily(b)
       if (b.daily) setDayBest(readNum(`airmail-daily-${b.daily}`))
@@ -236,8 +249,8 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       ready()
     }
     loadDaily().then(ready, miss)
-    get('/api/airmail/free')
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    const loadFree = initial?.free ? Promise.resolve(initial.free) : get('/api/airmail/free').then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    loadFree
       .then((b: Bag) => {
         if (stop) return
         setFree(b)
@@ -251,7 +264,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
       stop = true
       clearTimeout(timer)
     }
-  }, [loadWars])
+  }, [loadWars, initial])
 
   // ушли со страницы посреди полёта — музыка и ветер не должны играть дальше
   useEffect(() => () => {
@@ -763,7 +776,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           {!authed && (
             <p className="am-login">
               <button type="button" className="tag outline" onClick={logIn}><XMark /> Log in to fly your own replies</button>
-              <span className="fine">Read-only. We never post.</span>
+              <LoginNote text="Read-only. We never post." />
             </p>
           )}
           {authed && !ownReady && mine?.collecting && <p className="fine am-wait">Reading your replies on X… your mailbag lands in a few seconds.</p>}
@@ -792,7 +805,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
           <Hangar xp={xp} plane={plane} onPlane={choosePlane} compact />
           {!!board.length && <p className="fine am-leader">Today’s leader: <b>@{board[0].handle}</b> · {fmt(board[0].score)}</p>}
           {!!dayBest && <p className="fine">Your best today: {fmt(dayBest)} · your ghost flies with you</p>}
-          <p className="fine am-by">A game by <Link href="/">Paper Planes</Link>, the live map of replies on X. Today’s mail is the same sky for everyone.</p>
+          <p className="fine am-by">A game by <Link href="/sky">Paper Planes</Link>, the live map of replies on X. Today’s mail is the same sky for everyone.</p>
         </div>
       )}
 
@@ -823,7 +836,7 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
             {g.cond.id !== 'fair' && <p className="fine">Weather: {g.cond.name}</p>}
             {unique.some((c) => c !== 'AQ') && (
               <p className="am-claim">{flag(nation)} {countryName(nation)} claims {unique.filter((c) => c !== 'AQ').map((c) => flag(c)).join(' ')}
-                {wars?.rulers.length ? <> · <Link href="/">see the war</Link></> : null}</p>
+                {wars?.rulers.length ? <> · <Link href="/sky">see the war</Link></> : null}</p>
             )}
             {promoted && (
               <p className="am-promo">Promoted: <b>{promoted.name}</b> · {NAMES[promoted.plane]} unlocked</p>

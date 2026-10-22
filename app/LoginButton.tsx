@@ -9,27 +9,40 @@ import { Arrow, XMark } from './icons'
 // главный страх перед OAuth — «бот начнёт постить от меня». Доступ только на чтение: говорим это прямо у кнопки
 const READ_ONLY = 'Read-only. We never post or DM.'
 
-// OAuth не удался (чаще всего «Cancel» на экране X) — better-auth возвращает на /?error=…: говорим об этом, а не молчим
-function LoginNote() {
+// вход через X; неудача (чаще всего «Cancel» на экране X) возвращает сюда же с ?error=…
+export const logInWithX = (from: string, callbackURL: string) => {
+  track('login_clicked', { from })
+  authClient.signIn.social({ provider: 'twitter', callbackURL, errorCallbackURL: location.pathname })
+}
+
+function Note({ text }: { text: string }) {
   const error = useSearchParams().get('error')
   useEffect(() => {
     if (error) track('login_failed', { error })
   }, [error])
-  const note = !error ? READ_ONLY : error === 'access_denied' ? 'Login with X was cancelled. Try again anytime.' : 'Couldn’t log in with X. Try again in a minute.'
+  const note = !error ? text : error === 'access_denied' ? 'Login with X was cancelled. Try again anytime.' : 'Couldn’t log in with X. Try again in a minute.'
   return <span className="fine">{note}</span>
 }
 
-export default function LoginButton() {
+// подпись под кнопкой входа: говорит, что вход не удался, вместо того чтобы молчать
+export function LoginNote({ text = READ_ONLY }: { text?: string }) {
+  return (
+    <Suspense fallback={<span className="fine">{text}</span>}>
+      <Note text={text} />
+    </Suspense>
+  )
+}
+
+// secondary — когда главное действие страницы другое (игра): кнопка контурная, а не розовая
+export default function LoginButton({ secondary = false }: { secondary?: boolean }) {
   const { data: session } = authClient.useSession()
-  if (session) return <Link className="tag" href="/me">Your country <Arrow /></Link>
+  if (session) return <Link className={secondary ? 'tag outline' : 'tag'} href="/me">Your country <Arrow /></Link>
   return (
     <span className="login">
-      <button className="tag" onClick={() => (track('login_clicked'), authClient.signIn.social({ provider: 'twitter', callbackURL: '/me' }))}>
-        <XMark /> Log in with X
+      <button className={secondary ? 'tag outline' : 'tag'} onClick={() => logInWithX('map', '/me')}>
+        <XMark /> {secondary ? 'Log in to fly your replies' : 'Log in with X'}
       </button>
-      <Suspense fallback={<span className="fine">{READ_ONLY}</span>}>
-        <LoginNote />
-      </Suspense>
+      <LoginNote />
     </span>
   )
 }

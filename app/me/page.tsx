@@ -69,8 +69,8 @@ export default function MePage() {
       <main className="sheet">
         <h1 className="title me-title" data-ink="Not boarded">Not boarded</h1>
         <p className="lede not-found-actions">
-          <Link className="tag" href="/">Back to the map and log in</Link>
-          <Link className="tag outline" href="/play">Play Airmail <Arrow /></Link>
+          <Link className="tag" href="/sky">Back to the map and log in</Link>
+          <Link className="tag outline" href="/">Play Airmail <Arrow /></Link>
         </p>
       </main>
     )
@@ -102,7 +102,7 @@ export default function MePage() {
         <p className="status" role="status">{status}</p>
         {me.country && (
           <p className="spot-link">
-            <Link href="/?spot">{me.spot ? 'Move your spot on the map' : 'Show where you live on the map'} <Arrow /></Link>
+            <Link href="/sky?spot">{me.spot ? 'Move your spot on the map' : 'Show where you live on the map'} <Arrow /></Link>
             <span className="fine">Planes sent to you will land right there.</span>
           </p>
         )}
@@ -115,12 +115,12 @@ export default function MePage() {
           </a>
         </p>
       )}
-      <p className="lede"><Link className="tag" href="/play">Play Airmail: fly your replies <Arrow /></Link></p>
+      <p className="lede"><Link className="tag" href="/">Play Airmail: fly your replies <Arrow /></Link></p>
       <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} airmail={me.airmail ?? []} />
       <p className="fine">Jev reads each reply once to fold it into an Airmail letter; the text is never stored.</p>
       <Hangar xp={me.xp ?? 0} plane={me.plane ?? 'dart'} onPlane={setPlane} />
       <Support patronSince={me.patronSince ?? null} open={!!me.donations} />
-      <p className="lede"><Link className="tag" href="/">See your planes on the map <Arrow /></Link></p>
+      <p className="lede"><Link className="tag" href="/sky">See your planes on the map <Arrow /></Link></p>
     </main>
   )
 }

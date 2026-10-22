@@ -2,7 +2,7 @@
 
 **Every reply on X is a paper plane.** Log in with X (read-only, we never post) and every reply you write takes off from your country and flies across a live world map to the country of the person you replied to. No bot and no prompt: you keep talking on X as usual, and the map draws it.
 
-**[AIRMAIL](https://paper-planes-three.vercel.app/play)** turns those replies into a flight game. Every reply you've sent is a letter, and you fly it to the person you wrote to before your paper plane hits the ground.
+**[AIRMAIL](https://paper-planes-three.vercel.app/)** turns those replies into a flight game, and it is the home page: no login needed to play. Every reply you've sent is a letter, and you fly it to the person you wrote to before your paper plane hits the ground. The live map is at [/sky](https://paper-planes-three.vercel.app/sky).
 
 ## Why it's different
 

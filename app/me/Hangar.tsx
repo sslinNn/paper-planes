@@ -32,7 +32,7 @@ export default function Hangar({ xp, plane, onPlane, compact }: { xp: number; pl
           )
         })}
       </div>
-      {!compact && <p className="fine"><Link href="/play">Deliver letters in Airmail to rank up <Arrow /></Link></p>}
+      {!compact && <p className="fine"><Link href="/">Deliver letters in Airmail to rank up <Arrow /></Link></p>}
     </section>
   )
 }

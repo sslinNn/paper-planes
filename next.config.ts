@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
     { source: "/ingest/:path*", destination: "https://eu.i.posthog.com/:path*" },
   ],
   skipTrailingSlashRedirect: true,
+  // игра переехала на главную: старые ссылки и закладки на /play ведут туда же (открытки /play/r/… живут где жили)
+  redirects: async () => [{ source: "/play", destination: "/", permanent: true }],
   headers: async () => [{
     source: "/:path*",
     headers: [

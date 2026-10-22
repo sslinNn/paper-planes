@@ -15,6 +15,8 @@ export const analytics = () =>
           defaults: '2026-08-30',
           // ошибки фронта — в Error tracking PostHog
           capture_exceptions: true,
+          // глобус и игра — это canvas: без его записи в повторах сессий вместо них серая заглушка. 2 кадра в секунду хватит понять, что человек видел
+          session_recording: { captureCanvas: { recordCanvas: true, canvasFps: 2, canvasQuality: '0.4' } },
         })
         return posthog
       })

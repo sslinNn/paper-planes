@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og'
 
-// превью /play в ленте X: авиапочтовый конверт — кайма в косую полоску и крупное AIRMAIL
+// превью главной (игры) в ленте X: авиапочтовый конверт — кайма в косую полоску и крупное AIRMAIL.
+// Страницы карты (/sky) держат свой скриншот в app/sky/
 export const alt = 'Airmail: a paper-plane game where the letters are your real X replies'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'

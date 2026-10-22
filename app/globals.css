@@ -501,7 +501,9 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .sheet.traffic .traffic-actions { display: flex; flex-wrap: wrap; gap: 14px 22px; margin-top: 40px; }
 
 /* ---------- airmail ---------- */
-.masthead .play-link { order: 5; background: var(--paper); box-shadow: inset 0 0 0 1.5px var(--soot); }
+/* на карте игра — главное действие: розовая кнопка раньше входа, вход — контурный следом */
+.masthead .play-link { order: 4; }
+.masthead .login { order: 5; }
 .airmail { position: fixed; inset: 0; overflow: hidden; background: var(--paper); touch-action: none; user-select: none; -webkit-user-select: none; }
 .airmail-stage { position: absolute; inset: 0; }
 .airmail-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }

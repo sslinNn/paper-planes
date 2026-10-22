@@ -1,17 +1,19 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { at } from '@/lib/geo'
-import { clampTilt, flightAt, flightSeconds, onFront, type LonLat } from '@/lib/globe'
+import { clampTilt, flightAt, flightSeconds, onFront, replayKind, replayPool, type LonLat } from '@/lib/globe'
 import { geoDistance } from 'd3-geo'
 import { countryOf, type PlaneRow } from '@/lib/sky'
-import { isPlaneModel } from '@/lib/patrons'
+import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import { countryName } from '@/lib/country'
 import { flag } from '@/lib/postcard'
 import { inkOf } from '@/lib/wars'
-import type { WarState } from '@/lib/wars-db'
+import type { Delivery, WarState } from '@/lib/wars-db'
 import { drawArc, drawDart, drawGlobe, drawLiftedArc, INK, label, lifted, type Cam } from './globe-draw'
+import PlayLink from './PlayLink'
 
-type Flight = { p: PlaneRow; a: LonLat; b: LonLat; t0: number; dur: number; top: number }
+// рейс на глобусе: реплай (от @хэндла) или доставка из Mail Wars (письмо игрока, краской его нации)
+type Flight = { a: LonLat; b: LonLat; t0: number; dur: number; top: number; who: string; model: PlaneModel; ink: string | null; mine: boolean }
 
 const MAX_AIR = 12
 const REPLAY_MS = 1300
@@ -124,25 +126,41 @@ export default function Globe({ planes, lead }: { planes: PlaneRow[]; lead?: str
     // рейсы: сначала свежие, в паузах — повтор истории
     const air: Flight[] = []
     let seen = planesRef.current[0]?.id ?? 0
+    let seenDelivery = Infinity // первые доставки с опроса — история для повтора, а не «только что»
     let replayAt = 0
-    const launch = (p: PlaneRow, now: number) => {
-      const a = at(p.from_country), b = at(p.to_country)
+    let turn = 0
+    const fly = (a: LonLat, b: LonLat, now: number, f: Pick<Flight, 'who' | 'model' | 'ink' | 'mine'>) =>
       // чем дальше перелёт, тем выше дуга над планетой
-      air.push({ p, a, b, t0: now, dur: flightSeconds(a, b) * 1000, top: 0.05 + 0.22 * (geoDistance(a, b) / Math.PI) })
-    }
+      air.push({ a, b, t0: now, dur: flightSeconds(a, b) * 1000, top: 0.05 + 0.22 * (geoDistance(a, b) / Math.PI), ...f })
+    const launch = (p: PlaneRow, now: number) =>
+      fly(at(p.from_country), at(p.to_country), now, {
+        who: `@${p.from_handle}`, model: isPlaneModel(p.from_plane) ? p.from_plane : 'dart', ink: null,
+        mine: !!lead && (p.from_handle === lead || p.to_handle === lead),
+      })
+    const deliver = (d: Delivery, now: number) =>
+      fly(at(d.nation), at(d.country), now, { who: `${flag(d.nation)} Airmail`, model: 'dart', ink: inkOf(d.nation), mine: false })
 
     let raf = 0
     let last = performance.now()
     const frame = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000)
+      // метка кадра rAF бывает раньше performance.now() — без нижней границы инерция крутила бы планету назад
+      const dt = Math.max(0, Math.min(0.05, (now - last) / 1000))
       last = now
       const ps = planesRef.current
-      // новые самолётики с опроса — в небо сразу
+      const ds = warsRef.current?.state.feed ?? []
+      // новые самолётики и доставки с опроса — в небо сразу
       for (const p of ps) if (p.id > seen && air.length < MAX_AIR * 1.5) launch(p, now)
       if (ps[0]) seen = Math.max(seen, ps[0].id)
-      if (!calm && now > replayAt && air.length < MAX_AIR && ps.length) {
+      if (seenDelivery === Infinity) seenDelivery = ds[0]?.id ?? Infinity
+      else for (const d of ds) if (d.id > seenDelivery && air.length < MAX_AIR * 1.5) deliver(d, now)
+      if (ds[0] && seenDelivery !== Infinity) seenDelivery = Math.max(seenDelivery, ds[0].id)
+      const pool = replayPool(ps)
+      const kind = replayKind(turn, pool.length, ds.length)
+      if (!calm && now > replayAt && air.length < MAX_AIR && kind) {
         replayAt = now + REPLAY_MS
-        launch(ps[Math.floor(Math.random() * Math.min(ps.length, 120))], now)
+        turn++
+        if (kind === 'plane') launch(pool[Math.floor(Math.random() * pool.length)], now)
+        else deliver(ds[Math.floor(Math.random() * ds.length)], now)
       }
 
       // инерция и автоповорот
@@ -198,8 +216,8 @@ export default function Globe({ planes, lead }: { planes: PlaneRow[]; lead?: str
           air.splice(i, 1)
           continue
         }
-        const mine = !!lead && (f.p.from_handle === lead || f.p.to_handle === lead)
-        const color = mine ? INK.pink : INK.blue
+        const mine = f.mine
+        const color = mine ? INK.pink : (f.ink ?? INK.blue)
         const fade = p <= 1 ? 1 : Math.max(0, 1 - ((p - 1) * f.dur) / 1000 / TRAIL_FADE)
         const q = Math.min(1, p)
         const n = Math.max(2, Math.ceil(q * 40))
@@ -223,9 +241,8 @@ export default function Globe({ planes, lead }: { planes: PlaneRow[]; lead?: str
             ctx.fill()
           }
           const ahead = lifted(cam, flightAt(f.a, f.b, Math.min(1, q + 0.01)), f.top * Math.sin(Math.PI * Math.min(1, q + 0.01)))
-          const model = isPlaneModel(f.p.from_plane) ? f.p.from_plane : 'dart'
-          drawDart(ctx, head.x, head.y, Math.atan2(ahead.y - head.y, ahead.x - head.x), size * (mine ? 1.25 : 1), model, mine ? INK.pink : '#f5f3eb')
-          if (mine || air.length < 6) label(ctx, `@${f.p.from_handle}`, head.x, head.y - 14 * size, mine ? INK.pink : INK.soot, 10)
+          drawDart(ctx, head.x, head.y, Math.atan2(ahead.y - head.y, ahead.x - head.x), size * (mine ? 1.25 : 1), f.model, mine ? INK.pink : (f.ink ?? INK.paper))
+          if (mine || air.length < 6) label(ctx, f.who, head.x, head.y - 14 * size, mine ? INK.pink : INK.soot, 10)
         } else if (p > 1 && onFront(f.b, center)) {
           // посадка: кольцо расходится по месту прилёта
           const [x, y] = proj(f.b)!
@@ -284,13 +301,14 @@ function WarsPanel({ w }: { w: WarState }) {
       {rest.length > 0 && (
         <p className="wars-rest">{rest.map((e) => `${flag(e.nation)} ${e.countries}`).join('  ·  ')}</p>
       )}
+      {w.feed.length > 0 && <p className="wars-rest">Inked planes are letters players just landed in Airmail.</p>}
       {ev && (
         <p className="wars-alert">
           <b>{ev.hot ? 'Storm alert' : 'Rush hour'}</b> {flag(ev.country)} {countryName(ev.country)}: {ev.n} replies flying there. Letters to it score ×3 until{' '}
           {new Date(ev.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </p>
       )}
-      <a className="tag" href="/play">Fly for your flag</a>
+      <PlayLink from="globe-wars" className="tag">Fly for your flag</PlayLink>
     </aside>
   )
 }

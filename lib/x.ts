@@ -10,9 +10,8 @@ const API = 'https://api.x.com/2'
 export const X_DAILY_USD = 1
 export const xCost = (tweets: number, users: number, owned = false) => tweets * (owned ? 0.001 : 0.005) + users * 0.01
 
-// первый сбор после входа: 100 последних постов — паспорт новичка сразу с десятками самолётиков, а не с тремя.
-// Дороже всего здесь не посты, а адресаты (юзер $0.010): ~$0.3–0.7 на нового пилота
-export const FIRST_RUN = 100
+// первый сбор после входа: 20 последних постов. Больше — дорого: каждый адресат в ответе стоит $0.010
+export const FIRST_RUN = 20
 
 async function get<T>(url: string, token: string, f: typeof fetch): Promise<T> {
   const r = await f(url, { headers: { Authorization: `Bearer ${token}` } })

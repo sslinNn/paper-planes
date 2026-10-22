@@ -54,6 +54,13 @@ test('step: glides down, moves, wraps x', () => {
   assert.ok(Math.abs(g.y - y0) < 50)
 })
 
+test('step: negative dt does not rewind the clock', () => {
+  const g = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  step(g, still, -0.3, rand)
+  assert.equal(g.t, 0)
+  assert.equal(g.alt, 100)
+})
+
 test('warm letters sink slower than hot ones', () => {
   const warm = newGame([L(1, 'JP', 'warm')], [], [10.4, 51.1])
   const hot = newGame([L(1, 'JP', 'hot')], [], [10.4, 51.1])

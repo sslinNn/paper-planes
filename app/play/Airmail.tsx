@@ -411,7 +411,8 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     let last = performance.now()
     const none: Fx = { particles: [], floaters: [], rings: [] }
     const frame = (now: number) => {
-      const dt = (now - last) / 1000
+      // метка кадра rAF бывает раньше performance.now() — без нижней границы dt уходит в минус
+      const dt = Math.max(0, Math.min(0.1, (now - last) / 1000))
       last = now
       step(g, { aim: autopilot(g), turn: 0, dive: false }, dt)
       g.alt = Math.max(g.alt, 45) // демо не падает
@@ -509,7 +510,9 @@ export default function Airmail({ challenge }: { challenge?: Route } = {}) {
     }
     const frame = (now: number) => {
       const g = game.current!
-      const dt = Math.min(0.1, (now - last) / 1000)
+      // метка кадра rAF бывает раньше performance.now() из эффекта: отрицательный dt увёл бы g.t в минус,
+      // зум «пикирования с орбиты» — ниже нуля, и ellipse с отрицательным радиусом ронял бы цикл кадров
+      const dt = Math.max(0, Math.min(0.1, (now - last) / 1000))
       last = now
       const inp = input.current
       const keys = inp.keys

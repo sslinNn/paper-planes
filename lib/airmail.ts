@@ -342,7 +342,8 @@ function moveStray(s: Stray, dt: number) {
 
 export function step(g: Game, input: Input, rawDt: number, rand = Math.random): GameEvent[] {
   if (g.done) return []
-  const dt = Math.min(rawDt, MAX_DT)
+  // время не идёт назад: отрицательный dt от rAF уводил g.t в минус, а с ним и стартовый зум камеры
+  const dt = Math.max(0, Math.min(rawDt, MAX_DT))
   const ev: GameEvent[] = []
   const m = modOf(active(g)?.kind)
   const pm = PLANE_MOD[g.plane]

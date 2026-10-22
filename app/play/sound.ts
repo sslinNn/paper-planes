@@ -22,15 +22,19 @@ function noise(a: AudioContext, seconds: number) {
   return b
 }
 
+// iOS отклоняет resume() без жеста или когда аудиоустройство занято («Failed to start the audio device»):
+// игра просто остаётся без звука, а не сыплет необработанными ошибками
+const quiet = (p?: Promise<void>) => void p?.catch(() => {})
+
 export function unlock() {
-  if (ac) return void ac.resume()
+  if (ac) return quiet(ac.resume())
   try {
     ac = new AudioContext()
   } catch {
     return
   }
   // фоновая вкладка: игра на паузе (rAF стоит) — звук тоже замолкает, а не играет в пустоту
-  document.addEventListener('visibilitychange', () => void (document.hidden ? ac?.suspend() : ac?.resume()))
+  document.addEventListener('visibilitychange', () => quiet(document.hidden ? ac?.suspend() : ac?.resume()))
   // ветер: петля шума через полосовой фильтр, громкость — от высоты и гроз
   const src = ac.createBufferSource()
   src.buffer = noise(ac, 2)

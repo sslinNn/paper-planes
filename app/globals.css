@@ -504,6 +504,8 @@ html { scrollbar-color: var(--blue) var(--paper); }
 /* на карте игра — главное действие: розовая кнопка раньше входа, вход — контурный следом */
 .masthead .play-link { order: 4; }
 .masthead .login { order: 5; }
+/* order кнопок шапки не должен ставить кнопку входа под её же подпись внутри .login */
+.masthead .login .tag { order: 0; }
 .airmail { position: fixed; inset: 0; overflow: hidden; background: var(--paper); touch-action: none; user-select: none; -webkit-user-select: none; }
 .airmail-stage { position: absolute; inset: 0; }
 .airmail-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
@@ -680,10 +682,14 @@ html { scrollbar-color: var(--blue) var(--paper); }
 .wars-alert { font: 600 .82rem/1.35 var(--font-text); padding-top: 6px; border-top: 1.5px dashed var(--soot); }
 .wars-alert b { color: var(--pink); text-transform: uppercase; letter-spacing: .06em; }
 .wars .tag { justify-self: start; }
+.wars-mini { display: none; }
+.wars-mini .hot { color: var(--pink); }
 @media (max-width: 720px) {
-  .wars { top: 8px; padding: 8px 10px; gap: 4px; box-shadow: 3px 3px 0 var(--pink); }
-  .wars-alert { font-size: .76rem; }
-  .wars .tag { display: none; } /* в шапке уже есть «Play Airmail» */
+  /* телефон: глобус важнее подробностей войны — одна строка в углу вместо карточки поверх планеты */
+  .wars { top: 8px; width: auto; max-width: calc(100% - 2 * var(--pad)); padding: 5px 9px; box-shadow: 3px 3px 0 var(--pink); }
+  .wars > :not(.wars-mini) { display: none; }
+  .wars-mini { display: block; font: 700 .8rem/1.2 var(--font-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wars-mini b:first-child { color: var(--blue); text-transform: uppercase; letter-spacing: .08em; font-size: .7rem; margin-right: .3em; }
 }
 .am-alert { margin: 0; padding: 4px 8px; background: var(--pink); color: var(--soot); font: 800 .8rem var(--font-text); border: 1.5px solid var(--soot); }
 .am-wars { display: grid; gap: 4px; min-width: 0; }

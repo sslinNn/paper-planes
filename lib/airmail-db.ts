@@ -1,6 +1,6 @@
 import { pool } from './db.ts'
 import { planeRows } from './pilot-db.ts'
-import { tally, type CountryWeather, type Letter, type Sky } from './airmail.ts'
+import { spread, tally, type CountryWeather, type Letter, type Sky } from './airmail.ts'
 import { isKind } from './letters.ts'
 import type { PlaneRow } from './sky.ts'
 import type { Stamp } from './pilot.ts'
@@ -35,7 +35,7 @@ export async function weatherRows(until = 'now()'): Promise<CountryWeather[]> {
 // Письма, которые Jev разметил (💌 🔥 😂 ❓), — первыми: они летают по-разному, в этом и игра
 const labeled = (p: PlaneRow) => (isKind(p.kind) && p.kind !== 'plain' ? 0 : 1)
 function pickLetters(rows: PlaneRow[], n: number): Letter[] {
-  const known = rows.filter((p) => p.to_country).sort((a, b) => labeled(a) - labeled(b))
+  const known = spread(rows.filter((p) => p.to_country).sort((a, b) => labeled(a) - labeled(b)))
   const fog = rows.filter((p) => !p.to_country).slice(0, known.length >= 4 ? 1 : 6 - known.length)
   return [...known.slice(0, n - fog.length), ...fog].map(toLetter)
 }

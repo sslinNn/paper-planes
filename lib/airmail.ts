@@ -87,8 +87,9 @@ export type Game = {
 export const SPEED = 25 // единиц карты (ширина 1000) в секунду
 export const TURN = 2.6 // рад/с
 export const SINK = 6.5 // высоты в секунду (плейтест автопилотом: 40–90% писем без термиков)
-// новичок: из 18 первых свободных забегов чужих игроков 14 кончились на 0–1 письме — первые полёты прощают больше
-export const ROOKIE_SINK = 0.6
+// новичок: из 18 свободных забегов чужих игроков 14 кончились на 0–1 письме — первые полёты прощают больше.
+// Мягко: главной стеной были круги над одной меткой (см. spread), после неё автопилот без помощи возит ~8 писем
+export const ROOKIE_SINK = 0.8
 export const DELIVERY_LIFT = 30
 export const THERMAL_LIFT = 15
 export const THERMAL_CHARGE = 30 // сколько высоты термик отдаёт за игру — кружить вечно нельзя
@@ -154,6 +155,20 @@ export const countryAt = (p: [number, number]) => {
   return f ? isoOf(f) : null
 }
 
+// мешок вразброс по адресатам: реплаи одному человеку идут пачками (из 49 писем 22 — одному адресату в Англии),
+// и полёт превращался в круги над одной меткой. Не больше cap писем в страну; сначала по одному в каждую — в руках разные
+export function spread<T extends { to_country: string | null }>(letters: T[], cap = 3): T[] {
+  const groups = new Map<string, T[]>()
+  for (const l of letters) {
+    const g = groups.get(l.to_country ?? 'AQ') ?? []
+    if (g.length < cap) g.push(l)
+    groups.set(l.to_country ?? 'AQ', g)
+  }
+  const out: T[] = []
+  for (let i = 0; i < cap; i++) for (const g of groups.values()) if (g[i]) out.push(g[i])
+  return out
+}
+
 // точка на карте, куда лететь с письмом
 export const targetPoint = (l: Letter) =>
   projection(l.to_country && l.to_country !== 'AQ' ? at(l.to_country) : [0, -66])! as [number, number]
@@ -165,9 +180,11 @@ const local = (g: Game, l: Letter) => !g.left && !!g.startIso && l.to_country ==
 
 function nearest(g: Game): number | null {
   const away = g.letters.filter((l) => !local(g, l))
+  // только что сбросил письмо — следующее в ту же точку ждёт: сначала летим к другому адресату, а не кружим над меткой
+  const fresh = g.drop ? away.filter((l) => { const [tx, ty] = targetPoint(l); return dist(tx, ty, g.drop![0], g.drop![1]) > DELIVER_R * 2 }) : away
   let best: Letter | null = null
   let bd = Infinity
-  for (const l of away.length ? away : g.letters) {
+  for (const l of fresh.length ? fresh : away.length ? away : g.letters) {
     const [tx, ty] = targetPoint(l)
     const d = dist(g.x, g.y, tx, ty)
     if (d < bd) {

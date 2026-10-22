@@ -290,6 +290,11 @@ function WarsPanel({ w }: { w: WarState }) {
   const ev = w.event
   return (
     <aside className="wars" aria-label="Mail Wars">
+      {/* телефон: панель во всю ширину закрывала глобус — там одна строка: кто правит и куда ×3 */}
+      <p className="wars-mini">
+        <b>Mail Wars</b> {top ? <>{flag(top.nation)} rules {top.countries}</> : 'no flags yet'}
+        {ev && <> · <b className="hot">×3</b> {flag(ev.country)}</>}
+      </p>
       <p className="wars-kicker">Mail Wars · this week</p>
       {top ? (
         <p className="wars-lead">
@@ -301,7 +306,7 @@ function WarsPanel({ w }: { w: WarState }) {
       {rest.length > 0 && (
         <p className="wars-rest">{rest.map((e) => `${flag(e.nation)} ${e.countries}`).join('  ·  ')}</p>
       )}
-      {w.feed.length > 0 && <p className="wars-rest">Inked planes are letters players just landed in Airmail.</p>}
+      {w.feed.length > 0 && <p className="wars-rest wars-note">Inked planes are letters players just landed in Airmail.</p>}
       {ev && (
         <p className="wars-alert">
           <b>{ev.hot ? 'Storm alert' : 'Rush hour'}</b> {flag(ev.country)} {countryName(ev.country)}: {ev.n} replies flying there. Letters to it score ×3 until{' '}

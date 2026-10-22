@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CONDS, countryAt, delivered, headwind, MISSIONS, newGame, select, shareText, step, tally, targetPoint, wind, wrapDx, type Game, type Letter } from './airmail.ts'
+import { CONDS, countryAt, delivered, headwind, MISSIONS, newGame, select, shareText, spread, step, tally, targetPoint, wind, wrapDx, type Game, type Letter } from './airmail.ts'
 import { at, projection, W } from './geo.ts'
 
 const L = (id: number, to_country: string | null, kind: Letter['kind'] = null, to_handle = `u${id}`): Letter =>
@@ -68,7 +68,7 @@ test('rookie flights sink slower, so a newcomer reaches the first letter', () =>
     step(pro, still, 0.05, rand)
     step(rookie, still, 0.05, rand)
   }
-  assert.ok(100 - rookie.alt < (100 - pro.alt) * 0.7, `rookie lost ${(100 - rookie.alt).toFixed(1)} vs ${(100 - pro.alt).toFixed(1)}`)
+  assert.ok(100 - rookie.alt < (100 - pro.alt) * 0.9, `rookie lost ${(100 - rookie.alt).toFixed(1)} vs ${(100 - pro.alt).toFixed(1)}`)
   assert.equal(pro.rookie, false)
 })
 
@@ -346,4 +346,24 @@ test('two letters to the same place: the second needs a fresh approach, no free 
   step(g, still, 0.01, rand)
   onTarget(g, g.letters[0])
   assert.equal(step(g, still, 0.01, rand)[0]?.type, 'delivered')
+})
+
+test('spread: at most cap letters per country, and the hand starts with different destinations', () => {
+  const bag = [L(1, 'GB'), L(2, 'GB'), L(3, 'GB'), L(4, 'GB'), L(5, 'US'), L(6, 'GB'), L(7, 'IN'), L(8, 'US')]
+  const out = spread(bag)
+  assert.equal(out.filter((l) => l.to_country === 'GB').length, 3)
+  assert.deepEqual(out.slice(0, 3).map((l) => l.to_country), ['GB', 'US', 'IN'])
+  for (let i = 1; i < out.length; i++) if (out[i].to_country === out[i - 1].to_country) assert.fail(`two letters in a row to ${out[i].to_country}`)
+})
+
+test('after a drop the plane heads for another address, not back to the same mark', () => {
+  const [gx, gy] = targetPoint(L(1, 'GB'))
+  const g = newGame([L(1, 'GB'), L(2, 'GB'), L(3, 'FR')], [], [-30, 50])
+  g.x = gx
+  g.y = gy
+  g.left = true
+  g.target = 1
+  step(g, still, 0.05, rand)
+  assert.deepEqual(g.delivered.map((l) => l.id), [1])
+  assert.equal(g.target, 3, 'the second GB letter waits; France is next')
 })

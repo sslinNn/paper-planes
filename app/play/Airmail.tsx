@@ -5,7 +5,7 @@ import { at, projection, W } from '@/lib/geo'
 import { countryName, countryNames, isCountry } from '@/lib/country'
 import { EFFECT, EMOJI, LABEL, type Kind } from '@/lib/letters'
 import {
-  active, COMBO_WINDOW, CONDS, countryAt, headwind, MISSIONS, newGame, pickCond, select, shareText, step, tallyLine, targetPoint, TURN,
+  active, COMBO_WINDOW, CONDS, countryAt, headwind, MISSIONS, newGame, pickCond, select, shareText, spread, step, tallyLine, targetPoint, TURN,
   type Cond, type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
 } from '@/lib/airmail'
 import { dailyShare, dayNumber, flag, liveStreak, msToNextDay, rng, routeCode, streakAfter, type Route, type Streak } from '@/lib/postcard'
@@ -306,7 +306,8 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
     ticket.current = fetch('/api/wars/ticket', { method: 'POST' }).then((r) => (r.ok ? r.json() : null)).then((j: { ticket?: string } | null) => j?.ticket ?? null, () => null)
     setMode(m)
     // мешок дня фиксирован; свой и свободный — тасуются каждый раз: в руках 5–6 писем, остальные ждут в пуле
-    const shuffled = b.daily ? b.letters : [...b.letters].sort(() => Math.random() - 0.5)
+    // мешок дня приходит уже вразброс (сервер); свой и свободный — тасуем и разносим по адресатам, чтобы не кружить над одной меткой
+    const shuffled = b.daily ? b.letters : spread([...b.letters].sort(() => Math.random() - 0.5))
     const hand = b.daily ? shuffled : shuffled.slice(0, m === 'mine' ? 6 : 5)
     const rand = b.daily ? rng(b.daily * 104729) : Math.random
     // погода забега: у мешка дня — по сиду, самый первый полёт новичка — спокойный

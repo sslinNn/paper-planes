@@ -13,6 +13,7 @@ const PAPER = '#f5f3eb'
 const BLUE = '#0078bf'
 const PINK = '#ff48b0'
 const SOOT = '#1d1d1b'
+const GOLD = '#c99a2e' // фольга донатера: дуги, рамка и подпись — как золотые самолётики на карте
 
 // статика карты — один раз на процесс
 const LAND = land.map((f) => path(f) ?? '').join('')
@@ -41,8 +42,10 @@ export default async function Image({ params }: { params: Promise<{ handle: stri
   const dots = (p?.stamps ?? []).map((st) => path.pointRadius(5)({ type: 'Point', coordinates: at(st.country) }) ?? '').join('')
   const avatar = p?.image?.startsWith('https://pbs.twimg.com/') ? p.image.replace('_normal.', '_400x400.') : null
 
+  const gold = !!p?.patron
+  const ink = gold ? GOLD : PINK
   const big = `${handle}${s.countries}PAPER PLANES`
-  const small = 'COUNTRIESPLANESreplies on X flew to·0123456789'
+  const small = 'COUNTRIESPLANESreplies on X flew to·0123456789PATRON OF THE SKY'
   const [display, text] = await Promise.all([font('Big+Shoulders', 900, big.toUpperCase() + big), font('Archivo', 700, small)])
   const fonts = [
     ...(display ? [{ name: 'Display', data: display, weight: 900 as const }] : []),
@@ -56,22 +59,23 @@ export default async function Image({ params }: { params: Promise<{ handle: stri
         <svg width={size.width} height={mapH} viewBox={`0 0 ${W} ${H}`} style={{ position: 'absolute', left: 0, top: (size.height - mapH) / 2 }}>
           <path d={GRID} fill="none" stroke={BLUE} strokeOpacity={0.15} strokeWidth={0.6} />
           <path d={LAND} fill={BLUE} fillOpacity={0.2} stroke={BLUE} strokeOpacity={0.5} strokeWidth={0.5} />
-          <path d={arcs} fill="none" stroke={PINK} strokeWidth={2.4} strokeLinecap="round" />
-          <path d={dots} fill={PINK} />
+          <path d={arcs} fill="none" stroke={ink} strokeWidth={gold ? 3 : 2.4} strokeLinecap="round" />
+          <path d={dots} fill={ink} />
         </svg>
 
-        <div style={{ position: 'absolute', left: 48, top: 44, display: 'flex', alignItems: 'center', gap: 22, padding: '18px 26px 18px 18px', background: PAPER, border: `3px solid ${BLUE}` }}>
+        <div style={{ position: 'absolute', left: 48, top: 44, display: 'flex', alignItems: 'center', gap: 22, padding: '18px 26px 18px 18px', background: PAPER, border: `3px solid ${gold ? GOLD : BLUE}` }}>
           {avatar && (
-            <img src={avatar} width={96} height={96} style={{ borderRadius: 48, border: `3px solid ${PINK}` }} alt="" />
+            <img src={avatar} width={96} height={96} style={{ borderRadius: 48, border: `3px solid ${ink}` }} alt="" />
           )}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', fontFamily: 'Display', fontSize: 72, lineHeight: 0.9, color: BLUE, textTransform: 'uppercase' }}>{handle}</div>
             <div style={{ display: 'flex', fontSize: 26, marginTop: 8 }}>replies on X flew to</div>
+            {gold && <div style={{ display: 'flex', fontSize: 20, marginTop: 6, color: GOLD, letterSpacing: 3 }}>PATRON OF THE SKY</div>}
           </div>
         </div>
 
         <div style={{ position: 'absolute', right: 48, bottom: 40, display: 'flex', alignItems: 'flex-end', gap: 16 }}>
-          <div style={{ display: 'flex', fontFamily: 'Display', fontSize: 200, lineHeight: 0.8, color: BLUE, textShadow: `7px 5px 0 ${PINK}` }}>{s.countries}</div>
+          <div style={{ display: 'flex', fontFamily: 'Display', fontSize: 200, lineHeight: 0.8, color: BLUE, textShadow: `7px 5px 0 ${ink}` }}>{s.countries}</div>
           <div style={{ display: 'flex', flexDirection: 'column', fontSize: 30, paddingBottom: 6 }}>
             <div>{s.countries === 1 ? 'COUNTRY' : 'COUNTRIES'}</div>
             <div style={{ display: 'flex', color: BLUE }}>{`${s.planes} ${s.planes === 1 ? 'PLANE' : 'PLANES'}`}</div>

@@ -29,3 +29,16 @@ export function kmFlown(home: string | null, stamps: Stamp[]) {
   const from = at(home)
   return Math.round(stamps.reduce((km, s) => (s.country === 'AQ' ? km : km + s.count * distance(from, at(s.country)) * EARTH_KM), 0))
 }
+
+// самая дальняя страна, куда долетел реплай, — для крупной строки на странице пилота. Без дома не считаем
+export function farthest(home: string | null, stamps: Stamp[]): { country: string; km: number } | null {
+  if (!home || home === 'AQ') return null
+  const from = at(home)
+  let best: { country: string; km: number } | null = null
+  for (const s of stamps) {
+    if (s.country === 'AQ' || s.country === home) continue
+    const km = Math.round(distance(from, at(s.country)) * EARTH_KM)
+    if (!best || km > best.km) best = { country: s.country, km }
+  }
+  return best
+}

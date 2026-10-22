@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getMe, getTweets, getTweetsByIds, RateLimited, Unauthorized, X_DAILY_USD, xCost } from './x.ts'
+import { FIRST_RUN, getMe, getTweets, getTweetsByIds, RateLimited, Unauthorized, X_DAILY_USD, xCost } from './x.ts'
 
 const fake = (status: number, body: unknown, seen: string[] = []) =>
   ((url: string | URL | Request) => {
@@ -8,12 +8,12 @@ const fake = (status: number, body: unknown, seen: string[] = []) =>
     return Promise.resolve(new Response(JSON.stringify(body), { status }))
   }) as typeof fetch
 
-test('getTweets first run: 20 tweets, no since_id', async () => {
+test('getTweets first run: FIRST_RUN tweets in one page, no since_id', async () => {
   const seen: string[] = []
   const r = await getTweets('tok', '1', null, fake(200, { meta: { result_count: 0 } }, seen))
   const url = new URL(seen[0])
   assert.equal(url.pathname, '/2/users/1/tweets')
-  assert.equal(url.searchParams.get('max_results'), '20')
+  assert.equal(url.searchParams.get('max_results'), String(FIRST_RUN))
   assert.equal(url.searchParams.has('since_id'), false)
   assert.deepEqual(r, { tweets: [], users: [], newestId: null })
 })
@@ -67,10 +67,11 @@ test('getMe asks for username and location', async () => {
   assert.equal(me.username, 'me')
 })
 
-test('xCost: worst-case price; a full first run fits the daily budget many times', () => {
+test('xCost: own posts at the owned-read rate; a first run with 40 recipients fits the daily budget', () => {
   assert.ok(Math.abs(xCost(20, 20) - 0.3) < 1e-9)
   assert.ok(Math.abs(xCost(0, 1) - 0.01) < 1e-9)
-  assert.ok(xCost(20, 20) * 3 <= X_DAILY_USD)
+  assert.ok(Math.abs(xCost(100, 0, true) - 0.1) < 1e-9)
+  assert.ok(xCost(FIRST_RUN, 40, true) * 2 <= X_DAILY_USD)
 })
 
 test('getTweetsByIds asks for up to 100 ids and returns texts', async () => {

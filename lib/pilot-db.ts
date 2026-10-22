@@ -38,10 +38,12 @@ export async function planeRows(where: string, params: unknown[], limit = 200): 
 // публичная карточка пилота: только то, что и так видно на карте — хэндл, аватар, страны
 export async function pilot(handle: string) {
   const { rows: [u] } = await pool.query(
-    `select id, handle, image, country from "user" where lower(handle) = lower($1) limit 1`, [handle])
+    `select id, handle, image, country, exists (select 1 from patrons pt where pt.user_id = "user".id) as patron
+     from "user" where lower(handle) = lower($1) limit 1`, [handle])
   if (!u) return null
   const [stamps, planes] = await Promise.all([stampsOf(u.id), planeRows('u.id = $1', [u.id])])
-  return { handle: u.handle as string, image: u.image as string | null, country: u.country as string | null, stamps, planes }
+  // донатер — в золоте и на карточке, и в её превью в ленте X: там его и видят
+  return { handle: u.handle as string, image: u.image as string | null, country: u.country as string | null, patron: !!u.patron, stamps, planes }
 }
 
 // рейсы для табло /traffic: неделя, а если за неделю пусто — всё время.

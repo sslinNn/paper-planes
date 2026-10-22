@@ -5,10 +5,14 @@ export class Unauthorized extends Error {}
 
 const API = 'https://api.x.com/2'
 
-// X API — оплата за каждый вернувшийся ресурс. Считаем по самому дорогому тарифу (пост $0.005, юзер $0.010):
-// реальный счёт ниже — свои посты идут как owned reads по $0.001, повтор за сутки UTC не списывается
+// X API — оплата за каждый вернувшийся ресурс: пост $0.005, юзер $0.010; свои посты юзера (его лента по его токену) —
+// owned reads по $0.001. Повтор за сутки UTC не списывается, так что оценка — сверху
 export const X_DAILY_USD = 1
-export const xCost = (tweets: number, users: number) => tweets * 0.005 + users * 0.01
+export const xCost = (tweets: number, users: number, owned = false) => tweets * (owned ? 0.001 : 0.005) + users * 0.01
+
+// первый сбор после входа: 100 последних постов — паспорт новичка сразу с десятками самолётиков, а не с тремя.
+// Дороже всего здесь не посты, а адресаты (юзер $0.010): ~$0.3–0.7 на нового пилота
+export const FIRST_RUN = 100
 
 async function get<T>(url: string, token: string, f: typeof fetch): Promise<T> {
   const r = await f(url, { headers: { Authorization: `Bearer ${token}` } })
@@ -23,7 +27,7 @@ const MAX_PAGES = 3
 
 export async function getTweets(token: string, userId: string, sinceId: string | null, f: typeof fetch = fetch) {
   const q = new URLSearchParams({
-    max_results: sinceId ? '100' : '20',
+    max_results: sinceId ? '100' : String(FIRST_RUN),
     'tweet.fields': 'in_reply_to_user_id,created_at',
     expansions: 'in_reply_to_user_id',
     'user.fields': 'username,location',
@@ -41,7 +45,7 @@ export async function getTweets(token: string, userId: string, sinceId: string |
     tweets.push(...(j.data ?? []))
     for (const u of j.includes?.users ?? []) users.set(u.id, u)
     if (!page) newestId = j.meta?.newest_id ?? sinceId
-    next = sinceId ? j.meta?.next_token : undefined // первый запуск — только последние 20, без хвоста
+    next = sinceId ? j.meta?.next_token : undefined // первый запуск — одна страница последних постов, без хвоста
     if (!next) break
   }
   return { tweets, users: [...users.values()], newestId }

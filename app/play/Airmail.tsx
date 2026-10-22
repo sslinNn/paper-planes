@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { at, projection, W } from '@/lib/geo'
 import { countryName, countryNames, isCountry } from '@/lib/country'
 import { EFFECT, EMOJI, LABEL, type Kind } from '@/lib/letters'
@@ -120,6 +120,38 @@ function ghostAt(trail: [number, number][] | null, t: number): Ghost {
 const get = (url: string) => fetch(url, { signal: AbortSignal.timeout(12000) })
 
 const logIn = () => logInWithX('airmail', '/')
+
+// гость сыграл мешок дня и попал бы в таблицу: забег с билетом ждёт в браузере, пока он входит через X, и засчитывается после
+const PENDING = 'airmail-pending-run'
+type Pending = { run: Record<string, unknown>; ticket: string | null; at: number }
+function takePending(): Pending | null {
+  try {
+    const p = JSON.parse(localStorage.getItem(PENDING) ?? 'null') as Pending | null
+    localStorage.removeItem(PENDING)
+    // билет живёт меньше часа — протухший забег сервер всё равно не примет
+    return p && Date.now() - p.at < 50 * 60_000 ? p : null
+  } catch {
+    return null
+  }
+}
+
+// гость хочет своё место в таблице дня: билет забега и сам забег — в браузер, после входа их отправит loadMine
+async function claimAfterLogin(ticket: Promise<string | null> | null, run: Record<string, unknown>, place: number) {
+  const t = await (ticket ?? Promise.resolve(null))
+  try {
+    localStorage.setItem(PENDING, JSON.stringify({ run, ticket: t, at: Date.now() } satisfies Pending))
+  } catch {}
+  track('run_claim_clicked', { place })
+  logInWithX('airmail-claim', '/')
+}
+
+function ClaimButton({ ticket, run, place }: { ticket: RefObject<Promise<string | null> | null>; run: Record<string, unknown>; place: number }) {
+  return (
+    <button type="button" className="tag" onClick={() => claimAfterLogin(ticket.current, run, place)}>
+      <XMark /> You’d be #{place} today. Log in to claim it
+    </button>
+  )
+}
 
 // на телефоне — системное меню «Поделиться» (Telegram, WhatsApp, X…), на компьютере — твит. Меряем, что выбирают
 const canShare = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function'
@@ -245,6 +277,15 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
       const b = (await r.json()) as Bag & { authed?: false }
       if (stop || b.authed === false) return
       setAuthed(true)
+      // вернулся со входа «забрать место в таблице» — отправляем отложенный забег дня
+      const pending = takePending()
+      if (pending)
+        fetch('/api/airmail/run', { method: 'POST', body: JSON.stringify({ ...pending.run, ticket: pending.ticket }) })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((r: { place: number | null } | null) => {
+            track('run_claimed', { ok: !!r, place: r?.place ?? null })
+            if (r) get('/api/airmail/board').then((x) => x.json()).then((b: { rows: BoardRow[] }) => !stop && setBoard(b.rows)).catch(() => {})
+          }, () => {})
       setXp(b.xp ?? 0)
       // модель — только открытая серверным рангом (локальный выбор гостя мог быть другим)
       setPlane(isPlaneModel(b.plane) && unlocked(b.xp ?? 0, b.plane) ? b.plane : 'dart')
@@ -904,7 +945,18 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
                 ))}
               </ol>
             )}
-            {bag.daily && !authed && <p className="fine">Log in with X to get on today’s board.</p>}
+            {bag.daily && !authed && (() => {
+              // место, которое гость занял бы прямо сейчас: войдёт — забег засчитается (см. takePending)
+              const score = Math.round(g.score)
+              const place = board.filter((r) => r.score > score).length + 1
+              const run = { day: bag.daily, mode, score, delivered: g.delivered.length, km: Math.round(g.km), countries }
+              return score > 0 && place <= 20 ? (
+                <p className="am-login">
+                  <ClaimButton ticket={ticket} run={run} place={place} />
+                  <LoginNote text="Your run is saved until you’re back. Read-only, we never post." />
+                </p>
+              ) : <p className="fine">Log in with X to get on today’s board.</p>
+            })()}
             {!!unique.length && (
               <ul className="am-stamps">
                 {unique.slice(0, 6).map((c) => (

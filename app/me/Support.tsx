@@ -11,6 +11,12 @@ export default function Support({ patronSince, open }: { patronSince: string | n
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
+  const [cost, setCost] = useState<{ usd: number; patrons: number } | null>(null)
+
+  // во что обходится небо: X API платный — показываем рядом с донатом, на что идут деньги
+  useEffect(() => {
+    fetch('/api/sky-cost').then((r) => (r.ok ? r.json() : null)).then(setCost, () => {})
+  }, [])
 
   useEffect(() => {
     // вернулись со страницы оплаты кнопкой «Назад» — браузер достаёт страницу из кэша вместе с «Opening payment…»
@@ -57,6 +63,12 @@ export default function Support({ patronSince, open }: { patronSince: string | n
   return (
     <section className="support" aria-labelledby="support-title">
       <h2 id="support-title">{patronSince ? 'Patron of the sky' : 'Support the sky'}</h2>
+      {cost && cost.usd > 0 && (
+        <p className="sky-cost">
+          Every plane is read through the paid X API: up to <b>${cost.usd.toFixed(2)}</b> this month
+          {cost.patrons ? <>, {cost.patrons} {cost.patrons === 1 ? 'patron chips' : 'patrons chip'} in</> : null}. One person builds this, and donations keep the planes flying.
+        </p>
+      )}
 
       {patronSince ? (
         <p className="support-note">Thank you. Your planes fly in gold foil and your passport is diplomatic.</p>

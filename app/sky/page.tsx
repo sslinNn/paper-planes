@@ -4,7 +4,7 @@ import PlaneMap from '../PlaneMap'
 import PlayLink from '../PlayLink'
 
 const title = 'The live sky · Paper Planes'
-const description = 'Every reply on X is a paper plane flying across the world. Log in and yours take off.'
+const description = 'Where do your replies on X travel? Each one is a paper plane flying from your country to theirs.'
 export const metadata: Metadata = { title, description, openGraph: { title, description }, twitter: { title, description } }
 
 // живая карта реплаев. Главное действие здесь — игра: она работает без логина, а логин — для тех, кто хочет свои самолётики
@@ -13,7 +13,7 @@ export default function Sky() {
     <main>
       <PlaneMap>
         <h1 className="title" data-ink="Paper Planes">Paper Planes</h1>
-        <p className="lede">Every reply on X becomes a <strong>paper plane</strong>, flying from one country to another. Catch them in <strong>Airmail</strong>, or log in and yours take off.</p>
+        <p className="lede">Where do your replies on X travel? Each one becomes a <strong>paper plane</strong>, flying from your country to theirs. Log in to see yours, or catch everyone’s in <strong>Airmail</strong>.</p>
         <PlayLink from="sky" />
         <LoginButton secondary />
       </PlaneMap>

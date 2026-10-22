@@ -29,6 +29,7 @@ export default async function PilotPage({ params }: Props) {
         {/* eslint-disable-next-line @next/next/no-img-element -- аватар X, next/image ради одной картинки не нужен */}
         {avatar && <img className="pilot-face" src={avatar} alt="" width={56} height={56} />}
         <h1 className="title" data-ink={`@${p.handle}`}>@{p.handle}</h1>
+        {p.patron && <p className="patron-badge">Patron of the sky</p>}
         <p className="lede">
           Replies flew to <strong>{summaryLine(s)}</strong>
           {s.since && <> since {new Date(s.since).toLocaleDateString('en', { month: 'short', year: 'numeric' })}</>}.

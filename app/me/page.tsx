@@ -2,12 +2,12 @@
 import Link from 'next/link'
 import { identify, track } from '@/lib/track'
 import { useEffect, useState } from 'react'
-import { countryNames } from '@/lib/country'
+import { countryName, countryNames } from '@/lib/country'
 import Passport, { type Stamp } from './Passport'
 import Support from './Support'
 import Hangar from './Hangar'
 import type { PlaneModel } from '@/lib/patrons'
-import { kmFlown, summary } from '@/lib/pilot'
+import { farthest, kmFlown, summary } from '@/lib/pilot'
 import { Arrow, XMark } from '../icons'
 import { OWNER } from '@/lib/site'
 
@@ -92,36 +92,54 @@ export default function MePage() {
   }
 
   const handle = me.handle ? `@${me.handle}` : 'You’re in'
+  const stamps = me.stamps ?? []
+  const s = summary(stamps)
+  const km = kmFlown(me.country, stamps)
+  const far = farthest(me.country, stamps)
+  const form = (
+    <div className="form">
+      <label htmlFor="country">Your planes take off from</label>
+      <select id="country" value={me.country ?? ''} onChange={(e) => save(e.target.value)}>
+        <option value="">Antarctica (somewhere unknown)</option>
+        {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+      </select>
+      <p className="status" role="status">{status}</p>
+      {me.country && (
+        <p className="spot-link">
+          <Link href="/sky?spot">{me.spot ? 'Move your spot on the map' : 'Show where you live on the map'} <Arrow /></Link>
+          <span className="fine">Planes sent to you will land right there.</span>
+        </p>
+      )}
+    </div>
+  )
+  // сначала результат входа — куда улетели реплаи, им и делятся; поддержка — сразу после паспорта, пока радостно;
+  // настройки — ниже, кроме страны вылета: без неё нет километров, её спрашиваем первой
   return (
     <main className="sheet">
       <h1 className="title me-title" data-ink={handle}>{handle}</h1>
-      <div className="form">
-        <label htmlFor="country">Your planes take off from</label>
-        <select id="country" value={me.country ?? ''} onChange={(e) => save(e.target.value)}>
-          <option value="">Antarctica (somewhere unknown)</option>
-          {options.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-        </select>
-        <p className="status" role="status">{status}</p>
-        {me.country && (
-          <p className="spot-link">
-            <Link href="/sky?spot">{me.spot ? 'Move your spot on the map' : 'Show where you live on the map'} <Arrow /></Link>
-            <span className="fine">Planes sent to you will land right there.</span>
-          </p>
-        )}
-      </div>
-      {me.handle && (
-        <p className="lede share">
-          <a className="tag" href={shareUrl(me.handle, me.country, me.stamps ?? [])} target="_blank" rel="noopener"
-            onClick={() => track('share_sky', { countries: summary(me.stamps ?? []).countries })}>
-            <XMark /> Share my sky
-          </a>
+      {!me.country && form}
+      {s.planes > 0 && (
+        <p className="pilot-hero">
+          Your replies flew {km ? <><b>{km.toLocaleString('en')}</b> km to </> : <>to </>}
+          <b>{s.countries}</b> {s.countries === 1 ? 'country' : 'countries'} as <b>{s.planes}</b> paper {s.planes === 1 ? 'plane' : 'planes'}
+          {far && <>. Farthest: <b>{countryName(far.country)}</b>, {far.km.toLocaleString('en')} km away</>}.
         </p>
       )}
-      <p className="lede"><Link className="tag" href="/">Play Airmail: fly your replies <Arrow /></Link></p>
-      <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={me.stamps ?? []} patronSince={me.patronSince ?? null} airmail={me.airmail ?? []} />
-      <p className="fine">Jev reads each reply once to fold it into an Airmail letter; the text is never stored.</p>
-      <Hangar xp={me.xp ?? 0} plane={me.plane ?? 'dart'} onPlane={setPlane} />
+      {me.handle && s.planes > 0 && (
+        <p className="lede share">
+          <a className="tag" href={shareUrl(me.handle, me.country, stamps)} target="_blank" rel="noopener"
+            onClick={() => track('share_sky', { countries: s.countries })}>
+            <XMark /> Share my sky
+          </a>
+          <Link className="tag outline" href="/">Play Airmail: fly your replies <Arrow /></Link>
+        </p>
+      )}
+      {!s.planes && <p className="lede"><Link className="tag" href="/">Play Airmail: fly your replies <Arrow /></Link></p>}
+      <Passport handle={me.handle ?? ''} image={me.image} home={me.country} stamps={stamps} patronSince={me.patronSince ?? null} airmail={me.airmail ?? []} />
       <Support patronSince={me.patronSince ?? null} open={!!me.donations} />
+      <Hangar xp={me.xp ?? 0} plane={me.plane ?? 'dart'} onPlane={setPlane} />
+      {me.country && form}
+      <p className="fine">Jev reads each reply once to fold it into an Airmail letter; the text is never stored.</p>
       <p className="lede"><Link className="tag" href="/sky">See your planes on the map <Arrow /></Link></p>
     </main>
   )

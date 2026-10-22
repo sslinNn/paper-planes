@@ -40,7 +40,7 @@ export default function LoginButton({ secondary = false }: { secondary?: boolean
   return (
     <span className="login">
       <button className={secondary ? 'tag outline' : 'tag'} onClick={() => logInWithX('map', '/me')}>
-        <XMark /> {secondary ? 'Log in to fly your replies' : 'Log in with X'}
+        <XMark /> {secondary ? 'See where your replies fly' : 'Log in with X'}
       </button>
       <LoginNote />
     </span>

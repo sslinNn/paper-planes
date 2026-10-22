@@ -44,7 +44,7 @@ async function collectUser(r: Row): Promise<number> {
   }
 
   const { tweets, users, newestId } = await getTweets(accessToken, r.x_id, r.since_id)
-  await spend(xCost(tweets.length, users.length))
+  await spend(xCost(tweets.length, users.length, true))
   const ids = replyTargets(me, tweets)
   let count = 0
 
@@ -85,7 +85,7 @@ async function foldOld(token: string, xId: string) {
   if (!rows.length) return
   const ids: string[] = rows.map((r) => r.tweet_id)
   const tweets = await getTweetsByIds(token, ids)
-  await spend(xCost(tweets.length, 0))
+  await spend(xCost(tweets.length, 0, true))
   const kinds = await foldLetters(tweets)
   // Jev ответил — ставим ярлык; удалённого твита больше нет — письмо обычное, чтобы не перечитывать его вечно
   const gone = ids.filter((id) => !tweets.some((t) => t.id === id))

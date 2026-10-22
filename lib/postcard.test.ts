@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dailyShare, dayNumber, flag, parseRoute, rng, routeCode } from './postcard.ts'
+import { dailyShare, dayNumber, flag, liveStreak, msToNextDay, parseRoute, rng, routeCode, streakAfter } from './postcard.ts'
 
 test('flag turns an ISO code into its emoji; unknown stays a globe', () => {
   assert.equal(flag('JP'), '🇯🇵')
@@ -37,4 +37,19 @@ test('dailyShare is a spoiler-free Wordle-style line', () => {
   assert.equal(s, '✈️ Airmail #1 · 🇯🇵🇧🇷🇩🇪 · 🔥×2 · 42,310')
   assert.equal(dailyShare({ day: 2, countries: [], score: 0, hot: 0, won: false }), '✈️ Airmail #2 · 📭 · 0')
   assert.match(dailyShare({ day: 2, countries: ['US'], score: 5, hot: 0, won: true }), /🏁/)
+})
+
+test('msToNextDay counts down to New York midnight', () => {
+  assert.equal(msToNextDay(new Date('2026-10-22T03:00:00Z')), 3600000) // 23:00 NY (EDT)
+  assert.equal(msToNextDay(new Date('2026-10-22T04:00:00Z')), 86400000) // 00:00 NY: a whole day ahead
+})
+
+test('streak grows on consecutive days, holds within a day, resets after a gap', () => {
+  assert.deepEqual(streakAfter(null, 10), { day: 10, n: 1 })
+  assert.deepEqual(streakAfter({ day: 10, n: 1 }, 10), { day: 10, n: 1 })
+  assert.deepEqual(streakAfter({ day: 10, n: 1 }, 11), { day: 11, n: 2 })
+  assert.deepEqual(streakAfter({ day: 11, n: 2 }, 13), { day: 13, n: 1 })
+  assert.equal(liveStreak({ day: 11, n: 2 }, 12), 2, 'yesterday still counts: fly today to keep it')
+  assert.equal(liveStreak({ day: 11, n: 2 }, 13), 0)
+  assert.equal(liveStreak(null, 13), 0)
 })

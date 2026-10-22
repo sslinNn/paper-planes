@@ -9,6 +9,7 @@ import Hangar from './Hangar'
 import type { PlaneModel } from '@/lib/patrons'
 import { kmFlown, summary } from '@/lib/pilot'
 import { Arrow, XMark } from '../icons'
+import { OWNER } from '@/lib/site'
 
 type Me = {
   handle: string; country: string | null; image?: string | null; stamps?: Stamp[]
@@ -45,7 +46,8 @@ export default function MePage() {
     load().then((m) => {
       setMe(m)
       // склеиваем анонимные визиты с X-хэндлом, чтобы в PostHog видеть путь человека целиком
-      if (m?.handle) identify(m.handle, { handle: m.handle, country: m.country, patron: !!m.patronSince })
+      // автор сайта помечается внутренним: фильтр тестовых аккаунтов PostHog выкидывает его визиты из аналитики
+      if (m?.handle) identify(m.handle, { handle: m.handle, country: m.country, patron: !!m.patronSince, ...(m.handle === OWNER && { $internal_or_test_user: true }) })
       if (thanks) track('donation_returned', { outcome: 'paid', patron: !!m?.patronSince })
       if (!waiting(m)) return
       setStatus(thanks ? 'Thank you! Your gold arrives as soon as the payment clears.' : 'Your planes are taking off: reading your replies on X…')

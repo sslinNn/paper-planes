@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { maxScore, nextRank, rankOf, runRequest, unlocked } from './ranks.ts'
+import { maxScore, nextRank, rankOf, runFits, runRequest, unlocked } from './ranks.ts'
 
 test('rank thresholds', () => {
   assert.equal(rankOf(0).name, 'Cadet')
@@ -37,4 +37,11 @@ test('runRequest validates a finished run', () => {
   assert.equal(runRequest({ ...ok, countries: ['<b>'] }, 5), null)
   assert.equal(runRequest({ ...ok, countries: ['JP'] }, 5), null, 'countries must match delivered')
   assert.equal(runRequest(null, 5), null)
+})
+
+test('runFits: a score needs the wall-clock time its letters and kilometres take', () => {
+  const t0 = 5_000_000
+  assert.equal(runFits(t0, t0 + 1000, { delivered: 5, km: 100 }), false, '5 letters in a second')
+  assert.equal(runFits(t0, t0 + 60_000, { delivered: 5, km: 20_000 }), true)
+  assert.equal(runFits(t0, t0 + 20_000, { delivered: 2, km: 400_000 }), false, 'faster than any plane')
 })

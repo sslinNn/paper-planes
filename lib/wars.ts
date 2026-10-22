@@ -33,14 +33,27 @@ export function empires(r: Map<string, Ruler>): { nation: string; countries: num
   return [...n].map(([nation, countries]) => ({ nation, countries })).sort((a, b) => b.countries - a.countries || (a.nation < b.nation ? -1 : 1))
 }
 
+// потолок писем в одной заявке: обычный забег — 2–20 писем, бесконечный мешок свободного полёта даёт запас
+export const MAX_CLAIM = 60
+// билет на забег живёт меньше часа: одноразовость держит rate_limits, а их строки старше часа чистит сборщик
+export const TICKET_TTL_MS = 55 * 60_000
+// быстрее не долететь: письмо — это взлёт, курс и посадка, пара секунд минимум
+export const minRunMs = (letters: number) => letters * 2000
+
 // заявка с клиента: нация и счётчик доставок по странам. Сервер режет всё, что не похоже на один забег
-export function claimRequest(body: unknown): { nation: string; claims: [string, number][] } | null {
+export function claimRequest(body: unknown): { nation: string; claims: [string, number][]; letters: number } | null {
   if (!body || typeof body !== 'object') return null
   const { nation, countries } = body as { nation?: unknown; countries?: unknown }
-  if (!isIso(nation) || !Array.isArray(countries) || !countries.length || countries.length > 200) return null
+  if (!isIso(nation) || !Array.isArray(countries) || !countries.length || countries.length > MAX_CLAIM) return null
   const n = new Map<string, number>()
   for (const c of countries) if (isIso(c)) n.set(c, (n.get(c) ?? 0) + 1)
-  return n.size ? { nation, claims: [...n] } : null
+  return n.size ? { nation, claims: [...n], letters: countries.length } : null
+}
+
+// билет выдан до забега: заявка без билета, со слишком свежим (не успел бы долететь) или протухшим — не забег
+export const ticketFits = (issuedAt: number, now: number, letters: number) => {
+  const age = now - issuedAt
+  return age >= minRunMs(letters) && age <= TICKET_TTL_MS
 }
 
 // мировое событие часа: страна, куда сейчас летит больше всего настоящих реплаев. Из топа выбираем по номеру часа,

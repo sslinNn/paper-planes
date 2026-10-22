@@ -5,6 +5,7 @@ import { at, distance, EARTH_KM, graticule, H, isoOf, land, path, projection, W 
 import { countryOf, flightLog, routeKey, routes as routesOf, summarize, timeAgo, Traffic, type PlaneRow, UNKNOWN, userInk } from '@/lib/sky'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import { AIRFRAMES } from '@/lib/airframes'
+import { replayPool } from '@/lib/globe'
 import { Close } from './icons'
 import Live from './Live'
 import Globe from './Globe'
@@ -463,7 +464,8 @@ export default function PlaneMap({ children, pilot }: { children: ReactNode; pil
             <button type="button" aria-label="Zoom out" onClick={() => zoomAt(zoom.current / 1.6)}>−</button>
           </div>
         )}
-        <Arrivals planes={history.slice(0, 12)} />
+        {/* табло — свежие рейсы с известными странами: строка из одних «→ Antarctica» выглядит сломанной */}
+        <Arrivals planes={replayPool(history).slice(0, 12)} />
         {view === 'map' && !panned && !placing && <p className="pan-hint" aria-hidden="true">Drag to see the world</p>}
         {(placing || hint) && (
           <p className="placing-hint" role="status">

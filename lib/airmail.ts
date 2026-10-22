@@ -53,7 +53,8 @@ export const MISSIONS: Record<MissionId, { text: string; need: number }> = {
   km: { text: 'Fly 8,000 km', need: 8000 },
   balloon: { text: 'Grab a balloon', need: 1 },
 }
-export type Extra = { pool?: Letter[]; cond?: Cond; rand?: () => number }
+// rookie — первые свободные полёты новичка: попутный ветер, снижение медленнее (ROOKIE_SINK)
+export type Extra = { pool?: Letter[]; cond?: Cond; rand?: () => number; rookie?: boolean }
 export type GameEvent =
   | { type: 'delivered'; letter: Letter; points: number; combo: number }
   | { type: 'caught'; stray: Stray; points: number }
@@ -78,6 +79,7 @@ export type Game = {
   mission: { id: MissionId; have: number } | null; missionsDone: number
   drop: [number, number] | null // где легло прошлое письмо: следующее — только после нового захода
   alert: string | null // мировое событие часа (Mail Wars): письма в эту страну ×3, как срочные — не складываются
+  rookie: boolean // новичок: снижается медленнее, чтобы первые полёты кончались доставками, а не падением
 }
 
 // ---------- константы (крутятся плейтестом) ----------
@@ -85,6 +87,8 @@ export type Game = {
 export const SPEED = 25 // единиц карты (ширина 1000) в секунду
 export const TURN = 2.6 // рад/с
 export const SINK = 6.5 // высоты в секунду (плейтест автопилотом: 40–90% писем без термиков)
+// новичок: из 18 первых свободных забегов чужих игроков 14 кончились на 0–1 письме — первые полёты прощают больше
+export const ROOKIE_SINK = 0.6
 export const DELIVERY_LIFT = 30
 export const THERMAL_LIFT = 15
 export const THERMAL_CHARGE = 30 // сколько высоты термик отдаёт за игру — кружить вечно нельзя
@@ -215,7 +219,7 @@ export function newGame(
     startIso: countryAt(origin), left: false, diving: false, plane,
     trail: [[x, y]], km: 0, inStorm: false, done: false, won: false,
     pool: [...(extra.pool ?? [])], cond, hazards: [], nextEvent: FIRST_EVENT, inGust: false, rushSeq: -1,
-    mission: null, missionsDone: 0, drop: null, alert: null,
+    mission: null, missionsDone: 0, drop: null, alert: null, rookie: !!extra.rookie,
   }
   nextMission(g, extra.rand ?? Math.random)
   g.target = nearest(g)
@@ -378,7 +382,7 @@ export function step(g: Game, input: Input, rawDt: number, rand = Math.random): 
   if (!g.left && !(g.startIso && delivered(here, g.startIso))) g.left = true
 
   // высота
-  g.alt -= SINK * m.sink * pm.sink * dive.sink * dt
+  g.alt -= SINK * m.sink * pm.sink * dive.sink * (g.rookie ? ROOKIE_SINK : 1) * dt
   for (const th of g.thermals) {
     if (th.left > 0 && dist(g.x, g.y, th.x, th.y) < th.r) {
       const lift = Math.min(th.left, th.lift * dt)

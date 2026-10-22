@@ -1,4 +1,5 @@
 import type { PlaneModel } from './patrons.ts'
+import { ticketFits } from './wars.ts'
 
 // ранг пилота = сколько писем доставлено за все забеги; каждый ранг открывает модель самолётика со своим характером
 export const RANKS = [
@@ -47,3 +48,10 @@ export function runRequest(body: unknown, today: number): Run | null {
   if (!Array.isArray(countries) || countries.length !== delivered || !countries.every((c) => typeof c === 'string' && /^[A-Z]{2}$/.test(c))) return null
   return { day: day as number, mode, score: score as number, delivered: delivered as number, km: km as number, countries: countries as string[] }
 }
+
+// быстрее самолётика не налетать: пике, попутный ветер и порыв разом — с запасом
+export const MAX_KM_PER_S = 5000
+// забег засчитывается с билетом, выданным на старте: он должен был длиться столько, сколько нужно на эти письма и километры.
+// Счёт по-прежнему считает клиент, но подделка теперь стоит реального времени, а не одного запроса
+export const runFits = (issuedAt: number, now: number, run: Pick<Run, 'delivered' | 'km'>) =>
+  ticketFits(issuedAt, now, run.delivered) && run.km <= ((now - issuedAt) / 1000) * MAX_KM_PER_S

@@ -35,12 +35,17 @@ export default function Support({ patronSince, open }: { patronSince: string | n
     setBusy(true)
     setStatus('')
     track('donate_started', { amount, currency })
-    const r = await fetch('/api/donate', { method: 'POST', body: JSON.stringify({ email, amount, currency }) }).catch(() => null)
+    // запрос не дошёл (status 0) — запоминаем почему: так было дважды, а логи Vercel уже не расскажут
+    let failure: string | undefined
+    const r = await fetch('/api/donate', { method: 'POST', body: JSON.stringify({ email, amount, currency }) }).catch((x: unknown) => {
+      failure = x instanceof Error ? `${x.name}: ${x.message}` : String(x)
+      return null
+    })
     const j = r?.ok ? await r.json() : null
     if (j?.url) location.href = j.url
     else {
       setBusy(false)
-      track('donate_failed', { status: r?.status ?? 0 })
+      track('donate_failed', { status: r?.status ?? 0, failure })
       setStatus(
         r?.status === 400 ? 'Check the email and amount (at least 5 $ / 5 € / 100 ₽).'
           : r?.status === 422 ? 'lava.top didn’t accept this email. Try a different one.'

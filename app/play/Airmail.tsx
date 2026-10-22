@@ -8,7 +8,7 @@ import {
   active, COMBO_WINDOW, CONDS, countryAt, headwind, MISSIONS, newGame, pickCond, select, shareText, step, tallyLine, targetPoint, TURN,
   type Cond, type CountryWeather, type Game, type GameEvent, type Letter, type Sky,
 } from '@/lib/airmail'
-import { dailyShare, dayNumber, flag, rng, routeCode, type Route } from '@/lib/postcard'
+import { dailyShare, dayNumber, flag, liveStreak, msToNextDay, rng, routeCode, streakAfter, type Route, type Streak } from '@/lib/postcard'
 import { rankOf, unlocked, type Rank } from '@/lib/ranks'
 import { isPlaneModel, type PlaneModel } from '@/lib/patrons'
 import Hangar, { NAMES } from '../me/Hangar'
@@ -85,6 +85,19 @@ function writeNum(key: string, n: number) {
     localStorage.setItem(key, String(n))
   } catch {}
 }
+// серия дней с полётом — причина вернуться завтра; живёт в браузере, как рекорд и опыт гостя
+function readStreak(): Streak | null {
+  try {
+    const s = JSON.parse(localStorage.getItem('airmail-streak') ?? 'null')
+    return s && Number.isInteger(s.day) && Number.isInteger(s.n) ? s : null
+  } catch {
+    return null
+  }
+}
+const untilTomorrow = () => {
+  const m = Math.ceil(msToNextDay() / 60000)
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`
+}
 function readGhost(day: number): [number, number][] | null {
   try {
     return JSON.parse(localStorage.getItem(`airmail-ghost-${day}`) ?? 'null')
@@ -107,6 +120,15 @@ function ghostAt(trail: [number, number][] | null, t: number): Ghost {
 const get = (url: string) => fetch(url, { signal: AbortSignal.timeout(12000) })
 
 const logIn = () => logInWithX('airmail', '/')
+
+// на телефоне — системное меню «Поделиться» (Telegram, WhatsApp, X…), на компьютере — твит. Меряем, что выбирают
+const canShare = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+function share(e: React.MouseEvent, data: { text: string; url: string }, props: Record<string, unknown>) {
+  if (coarse() && canShare()) {
+    e.preventDefault()
+    navigator.share(data).then(() => track('airmail_share', { ...props, via: 'native' }), () => track('airmail_share_cancel', props))
+  } else track('airmail_share', { ...props, via: 'x' })
+}
 
 // опыт гостя живёт в браузере; у залогиненного — на сервере (сумма забегов)
 const localXp = () => readNum('airmail-xp')
@@ -156,6 +178,7 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
   // localStorage читается лениво: на сервере фаза loading, эти значения в разметку ещё не попадают
   const [best, setBest] = useState(() => (typeof window === 'undefined' ? 0 : readNum('airmail-best-score')))
   const [dayBest, setDayBest] = useState(0)
+  const [streak, setStreak] = useState<Streak | null>(() => (typeof window === 'undefined' ? null : readStreak()))
   const [mute, setMute] = useState(() => (typeof window === 'undefined' ? false : isMuted()))
   const [touch] = useState(() => (typeof window === 'undefined' ? false : coarse()))
   const [xp, setXp] = useState(() => (typeof window === 'undefined' ? 0 : localXp()))
@@ -167,6 +190,7 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
   const [guestNation, setGuestNation] = useState(() => (typeof window === 'undefined' ? 'US' : localNation()))
   const [alert, setAlert] = useState<string | null>(null)
   const fills = useRef<Map<string, string> | undefined>(undefined)
+  const ticket = useRef<Promise<string | null> | null>(null)
   const xpRef = useRef(xp)
   const nationRef = useRef('US')
   useEffect(() => {
@@ -278,6 +302,8 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
     const b = m === 'mine' ? mine : m === 'free' ? free : daily
     if (!b?.letters.length) return
     unlock()
+    // билет Mail Wars берём на старте: без него заявка о захваченных странах в конце забега не примется
+    ticket.current = fetch('/api/wars/ticket', { method: 'POST' }).then((r) => (r.ok ? r.json() : null)).then((j: { ticket?: string } | null) => j?.ticket ?? null, () => null)
     setMode(m)
     // мешок дня фиксирован; свой и свободный — тасуются каждый раз: в руках 5–6 писем, остальные ждут в пуле
     const shuffled = b.daily ? b.letters : [...b.letters].sort(() => Math.random() - 0.5)
@@ -290,7 +316,9 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
       const isos = [...new Set(b.letters.flatMap((l) => [l.from_country, l.to_country]).filter((x): x is string => !!x && x !== 'AQ'))]
       origin = at(isos[Math.floor(Math.random() * isos.length)] ?? null)
     }
-    const g = newGame(hand, b.weather, origin, b.sky ?? [], plane, { pool: shuffled.slice(hand.length), cond: c, rand })
+    // первые три полёта — попутный ветер новичка. В мешке дня — только гостям: их забеги не идут в таблицу лидеров
+    const rookie = readNum('airmail-runs') < 3 && (m !== 'daily' || !authed)
+    const g = newGame(hand, b.weather, origin, b.sky ?? [], plane, { pool: shuffled.slice(hand.length), cond: c, rand, rookie })
     // событие часа — только вне мешка дня: доска дня одинаково честна в любой час
     const ev = wars?.event
     g.alert = !b.daily && ev && ev.until > Date.now() ? ev.country : null
@@ -309,8 +337,8 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
     setHud({ alt: 100, letters: g.letters, target: g.target, over: '', score: 0, combo: 0, comboLeft: 0, hint: '', wind: headwind(g), t: 0, mission: '' })
     setResult(null)
     setPhase('flying')
-    track('airmail_start', { mode: m, letters: b.letters.length, day: b.daily })
-  }, [mine, daily, free, home, plane, wars])
+    track('airmail_start', { mode: m, letters: b.letters.length, day: b.daily, rookie })
+  }, [mine, daily, free, home, plane, wars, authed])
 
   // события игры: вес штампа, очки, звук, вибрация, обрывки бумаги, штамп в паспорт
   useEffect(() => {
@@ -486,10 +514,9 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
       }
       const countries = g.delivered.map((l) => l.to_country ?? 'AQ')
       if (authed) {
-        fetch('/api/airmail/run', {
-          method: 'POST',
-          body: JSON.stringify({ day: bag.daily ?? dayNumber(), mode, score: Math.round(g.score), delivered: g.delivered.length, km: Math.round(g.km), countries }),
-        })
+        const run = { day: bag.daily ?? dayNumber(), mode, score: Math.round(g.score), delivered: g.delivered.length, km: Math.round(g.km), countries }
+        ;(ticket.current ?? Promise.resolve(null))
+          .then((t) => fetch('/api/airmail/run', { method: 'POST', body: JSON.stringify({ ...run, ticket: t }) }))
           .then((r) => (r.ok ? r.json() : null))
           .then((r: { xp: number; place: number | null } | null) => {
             if (!r) return
@@ -503,9 +530,15 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
         promote(before + g.delivered.length)
       }
       writeNum('airmail-runs', readNum('airmail-runs') + 1)
+      const s = streakAfter(readStreak(), dayNumber())
+      try {
+        localStorage.setItem('airmail-streak', JSON.stringify(s))
+      } catch {}
+      setStreak(s)
       // Mail Wars: доставленные страны уходят под флаг пилота
       if (countries.some((c) => c !== 'AQ'))
-        fetch('/api/wars', { method: 'POST', body: JSON.stringify({ nation: nationRef.current, countries }) }).then(loadWars, () => {})
+        ticket.current?.then((t) => (t ? fetch('/api/wars', { method: 'POST', body: JSON.stringify({ nation: nationRef.current, countries, ticket: t }) }) : null))
+          .then(loadWars, () => {})
       const score = Math.round(g.score)
       if (score > readNum('airmail-best-score')) {
         writeNum('airmail-best-score', score)
@@ -773,6 +806,9 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
               <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel} · board</button>
             )}
           </div>
+          {liveStreak(streak, dayNumber()) > 0 && (
+            <p className="fine am-streak">🔥 {liveStreak(streak, dayNumber())}-day streak{streak!.day < dayNumber() ? ' · fly today to keep it' : ''}</p>
+          )}
           {!authed && (
             <p className="am-login">
               <button type="button" className="tag outline" onClick={logIn}><XMark /> Log in to fly your own replies</button>
@@ -833,6 +869,16 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
               <strong>{fmt(g.km)}</strong> km{g.caught ? <> · <strong>{g.caught}</strong> caught</> : null}
               {g.missionsDone ? <> · <strong>{g.missionsDone}</strong> {g.missionsDone === 1 ? 'mission' : 'missions'}</> : null}
             </p>
+            <div className="am-actions">
+              <a className="tag" href={url} target="_blank" rel="noopener" onClick={(e) => share(e, { text, url: link }, { delivered: g.delivered.length, score: Math.round(g.score), mode })}>
+                {touch && canShare() ? 'Share your route' : <><XMark /> Share your route</>}
+              </a>
+              <button type="button" className="tag outline" onClick={() => start(mode)}>Fly again</button>
+              {mode !== 'daily' && !!daily?.letters.length && <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel}</button>}
+              {mode !== 'free' && !!free?.letters.length && <button type="button" className="tag outline" onClick={() => start('free')}>Free flight</button>}
+              {mode !== 'mine' && ownReady && <button type="button" className="tag outline" onClick={() => start('mine')}>Your mail</button>}
+            </div>
+            <p className="fine am-tomorrow">Tomorrow’s mail lands in {untilTomorrow()}{liveStreak(streak, dayNumber()) > 1 ? <> · 🔥 {liveStreak(streak, dayNumber())}-day streak</> : null}</p>
             {g.cond.id !== 'fair' && <p className="fine">Weather: {g.cond.name}</p>}
             {unique.some((c) => c !== 'AQ') && (
               <p className="am-claim">{flag(nation)} {countryName(nation)} claims {unique.filter((c) => c !== 'AQ').map((c) => flag(c)).join(' ')}
@@ -865,15 +911,6 @@ export default function Airmail({ challenge, start: initial = null }: { challeng
                 ))}
               </ul>
             )}
-            <div className="am-actions">
-              <a className="tag" href={url} target="_blank" rel="noopener" onClick={() => track('airmail_share', { delivered: g.delivered.length, score: Math.round(g.score), mode })}>
-                <XMark /> Share your route
-              </a>
-              <button type="button" className="tag outline" onClick={() => start(mode)}>Fly again</button>
-              {mode !== 'daily' && !!daily?.letters.length && <button type="button" className="tag outline" onClick={() => start('daily')}>{dayLabel}</button>}
-              {mode !== 'free' && !!free?.letters.length && <button type="button" className="tag outline" onClick={() => start('free')}>Free flight</button>}
-              {mode !== 'mine' && ownReady && <button type="button" className="tag outline" onClick={() => start('mine')}>Your mail</button>}
-            </div>
             {!authed && (
               <p className="am-login">
                 <button type="button" className="tag outline" onClick={logIn}><XMark /> Log in to fly your own replies</button>

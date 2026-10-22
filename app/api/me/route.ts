@@ -16,7 +16,8 @@ const session = async () => auth.api.getSession({ headers: await headers() })
 
 export async function GET(req: Request) {
   const s = await session()
-  if (!s) return new Response(null, { status: 401 })
+  // гость — не ошибка: карта спрашивает /api/me у каждого зрителя, и 401 краснел бы в консоли у всех (клиенты ждут null)
+  if (!s) return Response.json(null, { headers: { 'Cache-Control': 'private, no-store' } })
   // вернулись с оплаты: сначала сверяемся с lava.top, чтобы золото появилось сразу, не дожидаясь вебхука
   // страница оплаты опрашивает раз в 5 с ≈ 13 раз; 15 за 10 минут хватает ей, но не циклу, который жжёт наш ключ lava
   if (new URL(req.url).searchParams.has('sync') && !(await limited(`sync:${s.user.id}`, 15, 600)))

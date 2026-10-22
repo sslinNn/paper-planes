@@ -20,6 +20,22 @@ export function dayNumber(now = new Date()) {
   return Math.round((Date.UTC(y, m - 1, d) - LAUNCH) / 86400000) + 1
 }
 
+// сколько до следующего «Today's Mail»: до полуночи по Нью-Йорку (в дни перевода часов ошибка в час — не страшно)
+const nyClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+export function msToNextDay(now = new Date()) {
+  const [h, m, s] = nyClock.format(now).split(':').map(Number)
+  return 86400000 - ((h * 60 + m) * 60 + s) * 1000
+}
+
+// серия дней с полётом: вчера летал — серия растёт, сегодня уже летал — не меняется, пропустил день — с начала
+export type Streak = { day: number; n: number }
+export function streakAfter(prev: Streak | null, today: number): Streak {
+  if (prev?.day === today) return prev
+  return { day: today, n: prev?.day === today - 1 ? prev.n + 1 : 1 }
+}
+// серия жива, если последний полёт сегодня или вчера (сегодня ещё можно продлить)
+export const liveStreak = (s: Streak | null, today: number) => (s && s.day >= today - 1 ? s.n : 0)
+
 // флаг из ISO-кода: две буквы → региональные индикаторы
 export const flag = (iso: string) =>
   /^[A-Z]{2}$/.test(iso) ? String.fromCodePoint(...[...iso].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : '🌐'

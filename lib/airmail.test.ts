@@ -61,6 +61,17 @@ test('step: negative dt does not rewind the clock', () => {
   assert.equal(g.alt, 100)
 })
 
+test('rookie flights sink slower, so a newcomer reaches the first letter', () => {
+  const pro = newGame([L(1, 'JP')], [], [10.4, 51.1])
+  const rookie = newGame([L(1, 'JP')], [], [10.4, 51.1], [], 'dart', { rookie: true })
+  for (let i = 0; i < 40; i++) {
+    step(pro, still, 0.05, rand)
+    step(rookie, still, 0.05, rand)
+  }
+  assert.ok(100 - rookie.alt < (100 - pro.alt) * 0.7, `rookie lost ${(100 - rookie.alt).toFixed(1)} vs ${(100 - pro.alt).toFixed(1)}`)
+  assert.equal(pro.rookie, false)
+})
+
 test('warm letters sink slower than hot ones', () => {
   const warm = newGame([L(1, 'JP', 'warm')], [], [10.4, 51.1])
   const hot = newGame([L(1, 'JP', 'hot')], [], [10.4, 51.1])
